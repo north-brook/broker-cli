@@ -1,0 +1,29 @@
+{
+  "name": "@northbrook/broker-sdk-typescript",
+  "version": "0.1.0",
+  "description": "Strictly typed TypeScript SDK for broker-daemon",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@msgpack/msgpack": "^3.0.0",
+    "toml": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

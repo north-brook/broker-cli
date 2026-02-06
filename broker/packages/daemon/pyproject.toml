@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling>=1.25.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "broker-daemon"
+version = "0.1.0"
+description = "Interactive Brokers daemon runtime and shared protocol modules"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "Northbrook" }]
+dependencies = [
+  "pydantic>=2.8.2",
+  "msgpack>=1.0.8",
+  "aiosqlite>=0.20.0",
+  "ib-async>=2.0.1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3.2",
+  "pytest-asyncio>=0.24.0",
+  "hypothesis>=6.112.1",
+]
+
+[project.scripts]
+broker-daemon = "broker_daemon.daemon.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/broker_daemon"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["src"]

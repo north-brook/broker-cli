@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling>=1.25.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "broker-cli"
+version = "0.1.0"
+description = "Python CLI client for broker-daemon"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "Northbrook" }]
+dependencies = [
+  "typer>=0.12.5",
+  "rich>=13.9.2",
+  "broker-daemon>=0.1.0",
+  "broker-sdk-python>=0.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3.2",
+]
+
+[project.scripts]
+broker = "broker_cli.main:run"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/broker_cli"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
