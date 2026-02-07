@@ -40,7 +40,7 @@ pyenv global 3.12.12
 cd broker
 uv venv --python 3.12 --seed
 direnv allow
-.venv/bin/python -m pip install -e './packages/daemon[dev]' -e './packages/sdk/python[dev]' -e './packages/cli[dev]'
+.venv/bin/python -m pip install -e './daemon[dev]' -e './sdk/python[dev]' -e './cli[dev]'
 ```
 
 Notes:
@@ -51,9 +51,9 @@ Notes:
 Optional TypeScript SDK setup:
 
 ```bash
-cd packages/sdk/typescript
-npm install
-npm run build
+cd sdk/typescript
+bun install
+bun run typecheck
 ```
 
 ## 3) Start and Authenticate IB Gateway
@@ -64,19 +64,34 @@ npm run build
 - No API key is required for the Gateway socket API.
 - Common Gateway API ports: paper/live = `4002` / `4001`.
 
-From repo root, `./build.sh` can install IB Gateway directly from the official installer URL.
+From repo root, `./install.sh` can install IB Gateway directly from the official installer URL.
 
 Optional install controls:
 
 ```bash
-BROKER_INSTALL_IB_APP=0 ./build.sh             # skip IB install step
-BROKER_IB_CHANNEL=latest ./build.sh            # stable|latest (default stable)
-BROKER_IB_INSTALL_DIR="$HOME/Applications/IB Gateway" ./build.sh
+BROKER_INSTALL_IB_APP=0 ./install.sh             # skip IB install step
+BROKER_IB_CHANNEL=latest ./install.sh            # stable|latest (default stable)
+BROKER_IB_INSTALL_DIR="$HOME/Applications/IB Gateway" ./install.sh
 ```
 
 ## 4) Configure
 
-Create `~/.broker/config.toml`:
+Northbrook stores instance data under `~/.northbrook/`:
+
+- `~/.northbrook/northbrook.json` for API keys/secrets used by terminal agents
+- `~/.northbrook/workspace/` as your instance-specific git repo (for example `risk.json`)
+- `~/.northbrook/config.toml` for broker daemon overrides
+
+Run onboarding (or rerun anytime):
+
+```bash
+nb setup
+```
+
+`nb setup` stores `ibkrUsername`/`ibkrPassword`, `aiProvider` (`provider`, `apiKey`, `model`), and optional `skills` (`xApi`, `braveSearchApi`) in `~/.northbrook/northbrook.json`.
+If enabled, broker startup uses IBC to automate IB Gateway login.
+
+Create `~/.northbrook/config.toml`:
 
 ```toml
 [gateway]
@@ -85,29 +100,33 @@ port = 4002
 client_id = 1
 ```
 
-## 5) Run daemon
+## 5) Service commands (nb)
 
 ```bash
-broker daemon start --paper
-broker daemon status
+nb start --paper
+nb status
+nb restart
+nb jobs --help
 ```
+
+`nb status` shows gateway connectivity plus broker-daemon and agents-daemon health.
 
 From repository root, the wrapper script now includes IB app bootstrap behavior:
 
 ```bash
-./start.sh
+./broker/start.sh
 ```
 
-- On macOS, `./start.sh` attempts to launch local `IB Gateway.app` if no IB API listener is detected.
+- On macOS, `./broker/start.sh` attempts to launch local `IB Gateway.app` if no IB API listener is detected.
 - It targets `IB Gateway.app`.
 - It then starts/restarts broker-daemon and prints connection diagnostics.
 
 Useful wrapper flags:
 
 ```bash
-./start.sh --no-launch-ib
-./start.sh --ib-app-path "/Applications/IB Gateway.app"
-./start.sh --ib-wait 60
+./broker/start.sh --no-launch-ib
+./broker/start.sh --ib-app-path "/Applications/IB Gateway.app"
+./broker/start.sh --ib-wait 60
 ```
 
 ## 6) Use CLI
@@ -124,7 +143,7 @@ If you mistype a command, the CLI returns close-match suggestions (for example `
 ## 7) Stop daemon
 
 ```bash
-broker daemon stop
+nb stop
 ```
 
 ## 8) Optional: Generate Shell Completions

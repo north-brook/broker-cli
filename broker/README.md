@@ -1,21 +1,21 @@
 # broker
 
-`broker` is a multi-package workspace for Interactive Brokers execution infrastructure.
+`broker` is a workspace for Interactive Brokers execution infrastructure.
 
 ## Workspace Layout
 
-- `packages/daemon`: long-running runtime + shared protocol/models (`broker_daemon`)
-- `packages/cli`: operator command-line interface (`broker`)
-- `packages/sdk/python`: async Python SDK (`from broker_sdk import Client`)
-- `packages/sdk/typescript`: strictly typed TypeScript SDK (`@northbrook/broker-sdk-typescript`)
+- `daemon`: long-running runtime + shared protocol/models (`broker_daemon`)
+- `cli`: operator command-line interface (`broker`)
+- `sdk/python`: async Python SDK (`from broker_sdk import Client`)
+- `sdk/typescript`: strictly typed TypeScript SDK (`@northbrook/broker-sdk-typescript`)
 
 ## Operator CLI
 
-The single CLI surface is `broker`. It talks to the daemon only (never directly to IB).
+Use `nb` for service-level lifecycle commands and `broker` for agent-facing trading commands.
 
 ```bash
-broker daemon start --paper
-broker daemon status
+nb start --paper
+nb status
 broker quote AAPL MSFT
 broker order buy AAPL 10 --limit 180
 broker risk check --side buy --symbol AAPL --qty 100
@@ -73,13 +73,13 @@ Bootstrap from `broker/`:
 ```bash
 uv venv --python 3.12 --seed
 direnv allow
-.venv/bin/python -m pip install -e './packages/daemon[dev]' -e './packages/sdk/python[dev]' -e './packages/cli[dev]'
+.venv/bin/python -m pip install -e './daemon[dev]' -e './sdk/python[dev]' -e './cli[dev]'
 ```
 
 ## Documentation
 
 - Setup and first run: `docs/quickstart.md`
-- CLI usage patterns: `packages/cli/README.md`
+- CLI usage patterns: `cli/README.md`
 - SDK integration patterns: `docs/agent-integration.md`
 - Risk limits and runtime controls: `docs/risk-configuration.md`
 - Hardening, recovery tests, load tests, and shell completion generation: `docs/hardening-testing.md`

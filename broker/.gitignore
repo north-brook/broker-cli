@@ -4,6 +4,6 @@ __pycache__/
 *.pyc
 .venv/
 .env
-packages/sdk/typescript/node_modules/
-packages/sdk/typescript/dist/
+sdk/typescript/node_modules/
+sdk/typescript/dist/
 completions/

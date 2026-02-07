@@ -1,147 +1,137 @@
-/**
- * Central state shape for the terminal TUI.
- *
- * Zustand slices are composed into a single store. Each slice manages
- * one domain (portfolio, orders, risk, agents, events, UI).
- */
-
-import type {
-  Position,
-  Balance,
-  PnLSummary,
-  OrderRecord,
-  FillRecord,
-  RiskConfigSnapshot,
-  RiskOverride,
-  DaemonStatusResponse,
-  ExposureEntry,
-} from "@northbrook/broker-sdk-typescript";
 import type { ScreenName } from "../lib/keymap.js";
 
-// ── Portfolio ──────────────────────────────────────────────────────
+// ── Broker data types ────────────────────────────────────────────
 
-export interface PortfolioSlice {
-  positions: Position[];
-  balance: Balance | null;
-  pnl: PnLSummary | null;
-  exposure: ExposureEntry[];
-  lastUpdated: number | null;
+export type BrokerPosition = {
+  symbol: string;
+  qty: number;
+  avgCost: number;
+  marketPrice: number | null;
+  marketValue: number | null;
+  unrealizedPnl: number | null;
+  realizedPnl: number | null;
+};
 
-  fetchPositions(): Promise<void>;
-  fetchBalance(): Promise<void>;
-  fetchPnl(): Promise<void>;
-  fetchExposure(): Promise<void>;
-  fetchAll(): Promise<void>;
-}
+export type BrokerOrder = {
+  clientOrderId: string;
+  symbol: string;
+  status: string;
+  side: string;
+  qty: number;
+  filledAt: string | null;
+};
 
-// ── Orders ─────────────────────────────────────────────────────────
+// ── Data entities ─────────────────────────────────────────────────
 
-export interface OrdersSlice {
-  orders: OrderRecord[];
-  fills: FillRecord[];
-  selectedOrderId: string | null;
-  lastUpdated: number | null;
+export type PositionEntry = {
+  slug: string; // filename without .md (e.g. "aapl-20260113")
+  symbol: string; // from frontmatter
+  orderIds: string[]; // from frontmatter `order_ids` — links to broker
+  strategy: string | null; // from frontmatter `strategy`
+  openedAt: string | null; // from frontmatter `opened_at`
+  content: string;
 
-  fetchOrders(): Promise<void>;
-  fetchFills(): Promise<void>;
-  selectOrder(id: string | null): void;
-}
+  // Broker-derived (merged at load time):
+  status: "open" | "closed";
+  qty: number;
+  avgCost: number;
+  marketValue: number;
+  unrealizedPnl: number | null;
+  marketPrice: number | null;
+};
 
-// ── Risk ───────────────────────────────────────────────────────────
-
-export interface RiskSlice {
-  limits: RiskConfigSnapshot | null;
-  overrides: RiskOverride[];
-  halted: boolean;
-  lastUpdated: number | null;
-
-  fetchLimits(): Promise<void>;
-  halt(): Promise<void>;
-  resume(): Promise<void>;
-}
-
-// ── Agents ─────────────────────────────────────────────────────────
-
-export interface AgentInfo {
+export type StrategyEntry = {
+  slug: string;
   name: string;
-  role: "manager" | "trader" | "analyst";
-  status: "online" | "offline" | "degraded";
-  lastHeartbeat: number | null;
-  latencyMs: number | null;
-  taskDescription: string | null;
-}
+  status: string;
+  lastEvaluatedAt: string | null;
+  positions: string[];
+  content: string;
 
-export interface AgentsSlice {
-  agents: AgentInfo[];
-  registerAgent(agent: AgentInfo): void;
-  updateAgent(name: string, patch: Partial<AgentInfo>): void;
-  removeAgent(name: string): void;
-}
+  // Broker-derived (aggregated from broker positions matching `positions[]`):
+  dayGainLoss: number;
+  totalGainLoss: number;
+  positionCount: number;
+};
 
-// ── Event log ──────────────────────────────────────────────────────
+export type ResearchEntry = {
+  slug: string;
+  title: string;
+  completedAt: string | null;
+  tags: string[];
+  content: string;
+};
 
-export interface EventEntry {
-  id: number;
+// ── Chat ──────────────────────────────────────────────────────────
+
+export type ChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
   timestamp: number;
-  topic: string;
-  summary: string;
-  data: Record<string, unknown>;
-}
+};
 
-export interface EventsSlice {
-  events: EventEntry[];
-  maxEvents: number;
-  pushEvent(topic: string, summary: string, data: Record<string, unknown>): void;
-  clearEvents(): void;
-}
+export type ChatSession = {
+  id: string;
+  originScreen: ScreenName;
+  messages: ChatMessage[];
+  createdAt: number;
+};
 
-// ── Connection ─────────────────────────────────────────────────────
+// ── Store slices ──────────────────────────────────────────────────
 
-export interface ConnectionSlice {
-  daemon: DaemonStatusResponse | null;
+export type ViewMode = "list" | "detail" | "chat";
+
+export type DataSlice = {
+  strategies: StrategyEntry[];
+  positions: PositionEntry[];
+  research: ResearchEntry[];
+  portfolioDayGainLoss: number;
+  portfolioTotalGainLoss: number;
+  portfolioTotalValue: number;
+  loadAll(): void;
+};
+
+export type NavigationSlice = {
+  screen: ScreenName;
+  viewMode: ViewMode;
+  selectedIndex: number;
+  scrollOffset: number;
+  setScreen(screen: ScreenName): void;
+  moveSelection(delta: number): void;
+  openDetail(): void;
+  goBack(): void;
+  cycleTab(): void;
+  scroll(delta: number): void;
+};
+
+export type ChatSlice = {
+  activeSession: ChatSession | null;
+  chatInput: string;
+  chatFocused: boolean;
+  setChatInput(value: string): void;
+  focusChat(): void;
+  blurChat(): void;
+  submitChat(): void;
+  exitChat(): void;
+};
+
+export type ConnectionSlice = {
   connected: boolean;
   error: string | null;
   lastPing: number | null;
+  brokerPositions: BrokerPosition[];
+  brokerBalance: {
+    netLiquidation: number | null;
+    cash: number | null;
+  } | null;
+  brokerOrders: BrokerOrder[];
+  fetchBrokerData(): Promise<void>;
+};
 
-  fetchStatus(): Promise<void>;
-  ping(): Promise<void>;
-}
+// ── Combined store ────────────────────────────────────────────────
 
-// ── UI ─────────────────────────────────────────────────────────────
-
-export interface UISlice {
-  screen: ScreenName;
-  focusedPanel: number;
-  panelCount: number;
-  showHelp: boolean;
-  showCommandPalette: boolean;
-  modalContent: string | null;
-  toasts: ToastEntry[];
-
-  setScreen(screen: ScreenName): void;
-  cycleFocus(): void;
-  setFocus(index: number): void;
-  toggleHelp(): void;
-  toggleCommandPalette(): void;
-  showModal(content: string): void;
-  closeModal(): void;
-  addToast(toast: Omit<ToastEntry, "id" | "timestamp">): void;
-  dismissToast(id: number): void;
-}
-
-export interface ToastEntry {
-  id: number;
-  timestamp: number;
-  level: "info" | "success" | "warning" | "error";
-  message: string;
-}
-
-// ── Combined store ─────────────────────────────────────────────────
-
-export type TerminalStore = PortfolioSlice &
-  OrdersSlice &
-  RiskSlice &
-  AgentsSlice &
-  EventsSlice &
-  ConnectionSlice &
-  UISlice;
+export type TerminalStore = DataSlice &
+  NavigationSlice &
+  ChatSlice &
+  ConnectionSlice;

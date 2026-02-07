@@ -1,6 +1,6 @@
 # Risk Configuration
 
-Risk limits live under `[risk]` in `~/.broker/config.toml`.
+Risk limits live under `[risk]` in `~/.northbrook/config.toml`.
 
 ```toml
 [risk]

@@ -10,7 +10,7 @@ The terminal is a full-screen TUI (Terminal User Interface) that acts as a comma
 | State | **Zustand** | Minimal boilerplate, works outside React (store actions callable from hooks, timers, streams). Single store with domain slices. |
 | Data | **@northbrook/broker-sdk-typescript** | Existing typed SDK with msgpack framing, request/response + streaming. Zero duplication. |
 | Styling | Custom theme module | Centralized color palette, Unicode symbols, box-drawing chars. No runtime CSS. |
-| Build | **TypeScript 5.7**, ESM, `tsx` for dev | Matches the SDK's compilation target. `tsx` gives instant reload during development. |
+| Build | **TypeScript 5.7**, ESM, Bun source entrypoints | Matches the SDK's compilation target and keeps local iteration fast. |
 
 ## Package structure
 
@@ -142,7 +142,7 @@ Risk limit configuration with current values, gauges for utilization, halted sta
 
 ### 5. Agents
 
-Agent fleet view. Shows manager, trader(s), and analyst(s) with heartbeat status, latency, current task descriptions. Includes the event feed filtered by agent activity.
+Agent fleet view. Shows active agents with heartbeat status, latency, current task descriptions, and service health context.
 
 ### 6. Audit
 

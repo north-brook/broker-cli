@@ -2,14 +2,13 @@
  * Badge — a small colored label for status indicators.
  */
 
-import React from "react";
 import { Text } from "ink";
 import { colors } from "../lib/theme.js";
 
-export interface BadgeProps {
+export type BadgeProps = {
   label: string;
   variant: "success" | "warning" | "error" | "info" | "muted";
-}
+};
 
 const variantColors: Record<BadgeProps["variant"], string> = {
   success: colors.green,
@@ -21,7 +20,7 @@ const variantColors: Record<BadgeProps["variant"], string> = {
 
 export function Badge({ label, variant }: BadgeProps) {
   return (
-    <Text color={variantColors[variant]} bold={variant !== "muted"}>
+    <Text bold={variant !== "muted"} color={variantColors[variant]}>
       [{label}]
     </Text>
   );

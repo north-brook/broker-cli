@@ -11,9 +11,13 @@ let _client: Client | null = null;
 let _initPromise: Promise<Client> | null = null;
 
 /** Get or create the shared broker client. */
-export async function getBrokerClient(opts?: ClientOptions): Promise<Client> {
-  if (_client) return _client;
-  if (_initPromise) return _initPromise;
+export function getBrokerClient(opts?: ClientOptions): Promise<Client> {
+  if (_client) {
+    return Promise.resolve(_client);
+  }
+  if (_initPromise) {
+    return _initPromise;
+  }
 
   _initPromise = Client.fromConfig({
     ...opts,

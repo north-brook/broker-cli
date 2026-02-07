@@ -2,8 +2,8 @@
  * Hook to access the broker SDK client from any component.
  */
 
-import { useState, useEffect } from "react";
-import { Client } from "@northbrook/broker-sdk-typescript";
+import type { Client } from "@northbrook/broker-sdk-typescript";
+import { useEffect, useState } from "react";
 import { getBrokerClient } from "../lib/broker.js";
 
 export function useBroker(): { client: Client | null; error: string | null } {

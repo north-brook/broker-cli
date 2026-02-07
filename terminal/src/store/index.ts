@@ -1,223 +1,356 @@
-/**
- * Zustand store — single source of truth for the entire TUI.
- *
- * Each domain slice is defined inline for co-location. The store
- * is consumed via React hooks in components.
- */
-
-import { createStore } from "zustand/vanilla";
 import { useStore } from "zustand";
-import { getBrokerClient } from "../lib/broker.js";
-import type { TerminalStore, EventEntry, AgentInfo, ToastEntry } from "./types.js";
+import { createStore } from "zustand/vanilla";
+import {
+  loadPositions,
+  loadResearch,
+  loadStrategies,
+} from "../lib/data-loader.js";
+import { screens } from "../lib/keymap.js";
+import type {
+  BrokerOrder,
+  BrokerPosition,
+  ChatMessage,
+  PositionEntry,
+  StrategyEntry,
+  TerminalStore,
+} from "./types.js";
 
-let _eventId = 0;
-let _toastId = 0;
+let _msgId = 0;
+
+function listLengthForScreen(state: TerminalStore): number {
+  switch (state.screen) {
+    case "strategies":
+      return state.strategies.length;
+    case "positions":
+      return state.positions.length;
+    case "research":
+      return state.research.length;
+    default:
+      return 0;
+  }
+}
+
+/** Build a symbol→BrokerPosition lookup from the broker positions array. */
+function buildPositionMap(
+  positions: BrokerPosition[]
+): Map<string, BrokerPosition> {
+  const map = new Map<string, BrokerPosition>();
+  for (const p of positions) {
+    map.set(p.symbol.toUpperCase(), p);
+  }
+  return map;
+}
+
+/** Merge raw markdown positions with live broker data. */
+function mergePositions(state: TerminalStore): {
+  positions: PositionEntry[];
+  totalValue: number;
+} {
+  const rawPositions = loadPositions();
+  const brokerMap = buildPositionMap(state.brokerPositions);
+  let totalValue = 0;
+
+  const positions: PositionEntry[] = rawPositions.map((raw) => {
+    const bp = brokerMap.get(raw.symbol.toUpperCase());
+    const isOpen = bp != null && bp.qty > 0;
+    const marketValue = bp?.marketValue ?? 0;
+    totalValue += marketValue;
+
+    return {
+      ...raw,
+      status: isOpen ? "open" : "closed",
+      qty: bp?.qty ?? 0,
+      avgCost: bp?.avgCost ?? 0,
+      marketValue,
+      unrealizedPnl: bp?.unrealizedPnl ?? null,
+      marketPrice: bp?.marketPrice ?? null,
+    };
+  });
+
+  return { positions, totalValue };
+}
+
+/** Merge raw markdown strategies with live broker data. */
+function mergeStrategies(brokerPositions: BrokerPosition[]): {
+  strategies: StrategyEntry[];
+  dayGL: number;
+  totalGL: number;
+} {
+  const rawStrategies = loadStrategies();
+  const brokerMap = buildPositionMap(brokerPositions);
+  let dayGL = 0;
+  let totalGL = 0;
+
+  const strategies: StrategyEntry[] = rawStrategies.map((raw) => {
+    let dayGainLoss = 0;
+    let totalGainLoss = 0;
+    let positionCount = 0;
+
+    for (const sym of raw.positions) {
+      const bp = brokerMap.get(sym.toUpperCase());
+      if (bp && bp.qty > 0) {
+        positionCount++;
+        dayGainLoss += bp.unrealizedPnl ?? 0;
+        totalGainLoss += bp.unrealizedPnl ?? 0;
+      }
+    }
+
+    dayGL += dayGainLoss;
+    totalGL += totalGainLoss;
+
+    return {
+      ...raw,
+      dayGainLoss,
+      totalGainLoss,
+      positionCount,
+    };
+  });
+
+  return { strategies, dayGL, totalGL };
+}
 
 export const store = createStore<TerminalStore>()((set, get) => ({
-  // ── Portfolio ──────────────────────────────────────────────────
+  // ── Data ──────────────────────────────────────────────────────
+  strategies: [],
   positions: [],
-  balance: null,
-  pnl: null,
-  exposure: [],
-  lastUpdated: null,
+  research: [],
+  portfolioDayGainLoss: 0,
+  portfolioTotalGainLoss: 0,
+  portfolioTotalValue: 0,
 
-  async fetchPositions() {
-    const client = await getBrokerClient();
-    const res = await client.positions();
-    set({ positions: res.positions });
-  },
-  async fetchBalance() {
-    const client = await getBrokerClient();
-    const res = await client.balance();
-    set({ balance: res.balance });
-  },
-  async fetchPnl() {
-    const client = await getBrokerClient();
-    const res = await client.pnl();
-    set({ pnl: res.pnl });
-  },
-  async fetchExposure() {
-    const client = await getBrokerClient();
-    const res = await client.exposure();
-    set({ exposure: res.exposure });
-  },
-  async fetchAll() {
-    const s = get();
-    await Promise.allSettled([
-      s.fetchPositions(),
-      s.fetchBalance(),
-      s.fetchPnl(),
-      s.fetchExposure(),
-      s.fetchOrders(),
-      s.fetchFills(),
-      s.fetchLimits(),
-      s.fetchStatus(),
-    ]);
-    set({ lastUpdated: Date.now() });
-  },
+  loadAll() {
+    const state = get();
+    const research = loadResearch();
 
-  // ── Orders ─────────────────────────────────────────────────────
-  orders: [],
-  fills: [],
-  selectedOrderId: null,
+    const { positions, totalValue } = mergePositions(state);
+    const { strategies, dayGL, totalGL } = mergeStrategies(
+      state.brokerPositions
+    );
 
-  async fetchOrders() {
-    const client = await getBrokerClient();
-    const res = await client.orders("all");
+    // Use broker balance for total value when available, else sum of position market values
+    const portfolioTotalValue =
+      state.brokerBalance?.netLiquidation ?? totalValue;
+
     set({
-      orders: res.orders as TerminalStore["orders"],
-      lastUpdated: Date.now(),
+      strategies,
+      positions,
+      research,
+      portfolioDayGainLoss: dayGL,
+      portfolioTotalGainLoss: totalGL,
+      portfolioTotalValue,
     });
   },
-  async fetchFills() {
-    const client = await getBrokerClient();
-    const res = await client.fills();
-    set({ fills: res.fills });
-  },
-  selectOrder(id) {
-    set({ selectedOrderId: id });
+
+  // ── Navigation ────────────────────────────────────────────────
+  screen: "command",
+  viewMode: "list",
+  selectedIndex: 0,
+  scrollOffset: 0,
+
+  setScreen(screen) {
+    set({ screen, viewMode: "list", selectedIndex: 0, scrollOffset: 0 });
   },
 
-  // ── Risk ───────────────────────────────────────────────────────
-  limits: null,
-  overrides: [],
-  halted: false,
+  moveSelection(delta) {
+    const state = get();
+    const len = listLengthForScreen(state);
+    if (len === 0) {
+      return;
+    }
+    const next = Math.max(0, Math.min(len - 1, state.selectedIndex + delta));
+    set({ selectedIndex: next });
+  },
 
-  async fetchLimits() {
-    const client = await getBrokerClient();
-    const res = await client.riskLimits();
+  openDetail() {
+    const state = get();
+    if (state.screen === "command") {
+      return;
+    }
+    const len = listLengthForScreen(state);
+    if (len === 0) {
+      return;
+    }
+    set({ viewMode: "detail", scrollOffset: 0 });
+  },
+
+  goBack() {
+    const state = get();
+    if (state.viewMode === "chat") {
+      set({
+        viewMode: "list",
+        activeSession: null,
+        chatFocused: false,
+        chatInput: "",
+      });
+      return;
+    }
+    if (state.viewMode === "detail") {
+      set({ viewMode: "list", scrollOffset: 0 });
+      return;
+    }
+  },
+
+  cycleTab() {
+    const state = get();
+    const idx = screens.indexOf(state.screen);
+    const next = screens[(idx + 1) % screens.length];
     set({
-      limits: res.limits,
-      halted: res.limits.halted,
-      lastUpdated: Date.now(),
+      screen: next,
+      viewMode: "list",
+      selectedIndex: 0,
+      scrollOffset: 0,
+      chatFocused: false,
+      chatInput: "",
     });
   },
-  async halt() {
-    const client = await getBrokerClient();
-    await client.riskHalt();
-    set({ halted: true });
-    get().addToast({ level: "warning", message: "Trading halted" });
-  },
-  async resume() {
-    const client = await getBrokerClient();
-    await client.riskResume();
-    set({ halted: false });
-    get().addToast({ level: "success", message: "Trading resumed" });
+
+  scroll(delta) {
+    set((s) => ({ scrollOffset: Math.max(0, s.scrollOffset + delta) }));
   },
 
-  // ── Agents ─────────────────────────────────────────────────────
-  agents: [],
+  // ── Chat ──────────────────────────────────────────────────────
+  activeSession: null,
+  chatInput: "",
+  chatFocused: false,
 
-  registerAgent(agent: AgentInfo) {
-    set((s) => ({ agents: [...s.agents, agent] }));
-  },
-  updateAgent(name: string, patch: Partial<AgentInfo>) {
-    set((s) => ({
-      agents: s.agents.map((a) => (a.name === name ? { ...a, ...patch } : a)),
-    }));
-  },
-  removeAgent(name: string) {
-    set((s) => ({ agents: s.agents.filter((a) => a.name !== name) }));
+  setChatInput(value) {
+    set({ chatInput: value });
   },
 
-  // ── Events ─────────────────────────────────────────────────────
-  events: [],
-  maxEvents: 200,
+  focusChat() {
+    set({ chatFocused: true });
+  },
 
-  pushEvent(topic: string, summary: string, data: Record<string, unknown>) {
-    const entry: EventEntry = {
-      id: ++_eventId,
+  blurChat() {
+    set({ chatFocused: false });
+  },
+
+  submitChat() {
+    const state = get();
+    const text = state.chatInput.trim();
+    if (!text) {
+      return;
+    }
+
+    const userMsg: ChatMessage = {
+      id: `msg-${++_msgId}`,
+      role: "user",
+      content: text,
       timestamp: Date.now(),
-      topic,
-      summary,
-      data,
     };
-    set((s) => ({
-      events: [entry, ...s.events].slice(0, s.maxEvents),
-    }));
-  },
-  clearEvents() {
-    set({ events: [] });
+
+    let session = state.activeSession;
+    if (!session) {
+      session = {
+        id: `session-${Date.now()}`,
+        originScreen: state.screen,
+        messages: [],
+        createdAt: Date.now(),
+      };
+    }
+
+    const assistantMsg: ChatMessage = {
+      id: `msg-${++_msgId}`,
+      role: "assistant",
+      content: "I'm a placeholder response. Agent integration coming soon.",
+      timestamp: Date.now(),
+    };
+
+    set({
+      activeSession: {
+        ...session,
+        messages: [...session.messages, userMsg, assistantMsg],
+      },
+      chatInput: "",
+      chatFocused: false,
+      viewMode: "chat",
+    });
   },
 
-  // ── Connection ─────────────────────────────────────────────────
-  daemon: null,
+  exitChat() {
+    set({
+      viewMode: "list",
+      activeSession: null,
+      chatFocused: false,
+      chatInput: "",
+    });
+  },
+
+  // ── Connection ────────────────────────────────────────────────
   connected: false,
   error: null,
   lastPing: null,
+  brokerPositions: [],
+  brokerBalance: null,
+  brokerOrders: [],
 
-  async fetchStatus() {
+  async fetchBrokerData() {
     try {
+      const { getBrokerClient } = await import("../lib/broker.js");
       const client = await getBrokerClient();
-      const res = await client.daemonStatus();
+
+      const [posRes, balRes, ordRes] = await Promise.allSettled([
+        client.positions(),
+        client.balance(),
+        client.orders("all"),
+      ]);
+
+      const brokerPositions: BrokerPosition[] =
+        posRes.status === "fulfilled"
+          ? posRes.value.positions.map((p) => ({
+              symbol: p.symbol,
+              qty: p.qty,
+              avgCost: p.avg_cost,
+              marketPrice: p.market_price,
+              marketValue: p.market_value,
+              unrealizedPnl: p.unrealized_pnl,
+              realizedPnl: p.realized_pnl,
+            }))
+          : [];
+
+      const brokerBalance =
+        balRes.status === "fulfilled"
+          ? {
+              netLiquidation: balRes.value.balance.net_liquidation,
+              cash: balRes.value.balance.cash,
+            }
+          : null;
+
+      const brokerOrders: BrokerOrder[] =
+        ordRes.status === "fulfilled"
+          ? ordRes.value.orders.map((o) => ({
+              clientOrderId: (o.client_order_id as string) ?? "",
+              symbol: (o.symbol as string) ?? "",
+              status: (o.status as string) ?? "",
+              side: (o.side as string) ?? "",
+              qty: (o.qty as number) ?? 0,
+              filledAt: (o.filled_at as string) ?? null,
+            }))
+          : [];
+
       set({
-        daemon: res,
+        brokerPositions,
+        brokerBalance,
+        brokerOrders,
         connected: true,
         error: null,
         lastPing: Date.now(),
       });
-    } catch (err) {
+    } catch {
       set({
         connected: false,
-        error: err instanceof Error ? err.message : String(err),
+        brokerPositions: [],
+        brokerBalance: null,
+        brokerOrders: [],
       });
     }
   },
-  async ping() {
-    try {
-      const client = await getBrokerClient();
-      const res = await client.heartbeat();
-      set({ connected: res.connected, lastPing: Date.now() });
-    } catch {
-      set({ connected: false });
-    }
-  },
-
-  // ── UI ─────────────────────────────────────────────────────────
-  screen: "dashboard",
-  focusedPanel: 0,
-  panelCount: 4,
-  showHelp: false,
-  showCommandPalette: false,
-  modalContent: null,
-  toasts: [],
-
-  setScreen(screen) {
-    set({ screen, focusedPanel: 0 });
-  },
-  cycleFocus() {
-    set((s) => ({ focusedPanel: (s.focusedPanel + 1) % s.panelCount }));
-  },
-  setFocus(index) {
-    set({ focusedPanel: index });
-  },
-  toggleHelp() {
-    set((s) => ({ showHelp: !s.showHelp }));
-  },
-  toggleCommandPalette() {
-    set((s) => ({ showCommandPalette: !s.showCommandPalette }));
-  },
-  showModal(content) {
-    set({ modalContent: content });
-  },
-  closeModal() {
-    set({ modalContent: null });
-  },
-  addToast(toast: Omit<ToastEntry, "id" | "timestamp">) {
-    const entry: ToastEntry = { ...toast, id: ++_toastId, timestamp: Date.now() };
-    set((s) => ({ toasts: [...s.toasts, entry] }));
-    // Auto-dismiss after 5 seconds
-    setTimeout(() => get().dismissToast(entry.id), 5000);
-  },
-  dismissToast(id) {
-    set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
-  },
 }));
 
-/** React hook to select state from the store. */
 export function useTerminal(): TerminalStore;
 export function useTerminal<T>(selector: (s: TerminalStore) => T): T;
 export function useTerminal<T>(selector?: (s: TerminalStore) => T) {
+  // biome-ignore lint/style/noNonNullAssertion: overloaded selector pattern requires assertion
   return useStore(store, selector!);
 }
 

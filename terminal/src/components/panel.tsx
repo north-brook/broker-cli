@@ -5,18 +5,18 @@
  * Supports focus highlighting and optional status indicators.
  */
 
-import React from "react";
 import { Box, Text } from "ink";
+import type React from "react";
 import { colors, symbols } from "../lib/theme.js";
 
-export interface PanelProps {
+export type PanelProps = {
   title: string;
   focused?: boolean;
   status?: "ok" | "warning" | "error" | "info";
   width?: number | string;
   height?: number | string;
   children: React.ReactNode;
-}
+};
 
 const statusIndicator: Record<string, { symbol: string; color: string }> = {
   ok: { symbol: symbols.connected, color: colors.green },
@@ -25,26 +25,31 @@ const statusIndicator: Record<string, { symbol: string; color: string }> = {
   info: { symbol: symbols.connected, color: colors.blue },
 };
 
-export function Panel({ title, focused, status, width, height, children }: PanelProps) {
+export function Panel({
+  title,
+  focused,
+  status,
+  width,
+  height,
+  children,
+}: PanelProps) {
   const borderColor = focused ? colors.borderFocus : colors.border;
   const si = status ? statusIndicator[status] : null;
 
   return (
     <Box
-      flexDirection="column"
-      borderStyle="round"
       borderColor={borderColor}
-      width={width}
+      borderStyle="round"
+      flexDirection="column"
       height={height}
       paddingX={1}
+      width={width}
     >
       <Box>
         <Text bold color={focused ? colors.brand : colors.textBright}>
           {title}
         </Text>
-        {si && (
-          <Text color={si.color}> {si.symbol}</Text>
-        )}
+        {si && <Text color={si.color}> {si.symbol}</Text>}
       </Box>
       <Box flexDirection="column" flexGrow={1}>
         {children}

@@ -1,0 +1,11 @@
+# macOS
+.DS_Store
+
+# Node/Bun dependencies
+node_modules/
+
+# Python caches
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.pyc

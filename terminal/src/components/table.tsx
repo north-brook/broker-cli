@@ -4,25 +4,24 @@
  * Supports column alignment, color coding, and optional row selection.
  */
 
-import React from "react";
 import { Box, Text } from "ink";
 import { colors } from "../lib/theme.js";
 
-export interface Column<T> {
+export type Column<T> = {
   header: string;
   width: number;
   align?: "left" | "right";
   render: (row: T) => string;
   color?: (row: T) => string;
-}
+};
 
-export interface TableProps<T> {
+export type TableProps<T> = {
   columns: Column<T>[];
   rows: T[];
   selectedIndex?: number;
   maxRows?: number;
   emptyMessage?: string;
-}
+};
 
 export function Table<T>({
   columns,
@@ -38,6 +37,7 @@ export function Table<T>({
       {/* Header */}
       <Box>
         {columns.map((col, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: columns are static
           <Box key={i} width={col.width}>
             <Text bold dimColor>
               {col.align === "right"
@@ -55,20 +55,25 @@ export function Table<T>({
         visible.map((row, ri) => {
           const isSelected = ri === selectedIndex;
           return (
+            // biome-ignore lint/suspicious/noArrayIndexKey: rows keyed by position
             <Box key={ri}>
               {columns.map((col, ci) => {
                 const value = col.render(row);
-                const cellColor = col.color?.(row) ?? (isSelected ? colors.brand : colors.text);
+                const cellColor =
+                  col.color?.(row) ?? (isSelected ? colors.brand : colors.text);
                 const formatted =
                   col.align === "right"
                     ? value.padStart(col.width - 1)
                     : value.padEnd(col.width - 1);
                 return (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: columns are static
                   <Box key={ci} width={col.width}>
                     <Text
-                      color={cellColor}
+                      backgroundColor={
+                        isSelected ? colors.bgSelected : undefined
+                      }
                       bold={isSelected}
-                      backgroundColor={isSelected ? colors.bgSelected : undefined}
+                      color={cellColor}
                     >
                       {formatted}
                     </Text>
@@ -82,9 +87,7 @@ export function Table<T>({
 
       {/* Overflow indicator */}
       {maxRows && rows.length > maxRows && (
-        <Text color={colors.textDim}>
-          +{rows.length - maxRows} more
-        </Text>
+        <Text color={colors.textDim}>+{rows.length - maxRows} more</Text>
       )}
     </Box>
   );

@@ -1,0 +1,17 @@
+{
+  "name": "northbrook",
+  "private": true,
+  "packageManager": "bun@1.2.2",
+  "workspaces": [
+    "agents",
+    "terminal",
+    "broker/sdk/typescript"
+  ],
+  "scripts": {
+    "typecheck": "(cd agents && bun run typecheck) && (cd terminal && bun run typecheck) && (cd broker/sdk/typescript && bun run typecheck)",
+    "lint": "(cd agents && bun run biome:check) && (cd terminal && bun run biome:check) && (cd broker/sdk/typescript && bun run biome:check)",
+    "lint:fix": "(cd agents && bun run biome:fix) && (cd terminal && bun run biome:fix) && (cd broker/sdk/typescript && bun run biome:fix)",
+    "ultracite": "(cd agents && bun run ultracite:check) && (cd terminal && bun run ultracite:check) && (cd broker/sdk/typescript && bun run ultracite:check)",
+    "check": "bun run typecheck && bun run lint"
+  }
+}

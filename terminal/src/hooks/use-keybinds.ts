@@ -1,66 +1,98 @@
-/**
- * Hook for global keyboard shortcut handling.
- *
- * Listens for raw key input via Ink's useInput and dispatches
- * screen switches, panel focus, and modal toggles.
- */
-
 import { useInput } from "ink";
-import { useTerminal } from "../store/index.js";
-import { screenMap } from "../lib/keymap.js";
+import { store, useTerminal } from "../store/index.js";
+
+const SCROLL_STEP = 3;
+
+function handleChatEscape(viewMode: string, goBack: () => void): void {
+  if (viewMode === "chat") {
+    goBack();
+  } else {
+    store.getState().setChatInput("");
+    store.getState().blurChat();
+  }
+}
+
+function handleArrow(
+  direction: "up" | "down",
+  viewMode: string,
+  scroll: (d: number) => void,
+  moveSelection: (d: number) => void
+): void {
+  const delta = direction === "up" ? -1 : 1;
+  if (viewMode === "detail") {
+    scroll(delta * SCROLL_STEP);
+  } else if (viewMode === "list") {
+    moveSelection(delta);
+  }
+}
+
+function handleReturn(
+  chatInput: string,
+  viewMode: string,
+  submitChat: () => void,
+  openDetail: () => void
+): void {
+  if (chatInput.trim()) {
+    submitChat();
+  } else if (viewMode === "list") {
+    openDetail();
+  }
+}
 
 export function useKeybinds(onQuit: () => void): void {
-  const setScreen = useTerminal((s) => s.setScreen);
-  const cycleFocus = useTerminal((s) => s.cycleFocus);
-  const toggleHelp = useTerminal((s) => s.toggleHelp);
-  const toggleCommandPalette = useTerminal((s) => s.toggleCommandPalette);
-  const showHelp = useTerminal((s) => s.showHelp);
-  const showCommandPalette = useTerminal((s) => s.showCommandPalette);
+  const viewMode = useTerminal((s) => s.viewMode);
+  const chatFocused = useTerminal((s) => s.chatFocused);
+  const chatInput = useTerminal((s) => s.chatInput);
+  const cycleTab = useTerminal((s) => s.cycleTab);
+  const moveSelection = useTerminal((s) => s.moveSelection);
+  const openDetail = useTerminal((s) => s.openDetail);
+  const goBack = useTerminal((s) => s.goBack);
+  const scroll = useTerminal((s) => s.scroll);
+  const submitChat = useTerminal((s) => s.submitChat);
+  const focusChat = useTerminal((s) => s.focusChat);
+  const setChatInput = useTerminal((s) => s.setChatInput);
 
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: keyboard dispatch is inherently branchy
   useInput((input, key) => {
-    // Escape closes any overlay
-    if (key.escape) {
-      if (showHelp) {
-        toggleHelp();
-        return;
-      }
-      if (showCommandPalette) {
-        toggleCommandPalette();
-        return;
-      }
-    }
-
-    // Don't process other global keys when overlays are open
-    if (showCommandPalette) return;
-
-    // Screen switching (1-6)
-    const target = screenMap[input];
-    if (target) {
-      setScreen(target);
-      return;
-    }
-
-    // Tab cycles panel focus
-    if (key.tab) {
-      cycleFocus();
-      return;
-    }
-
-    // Help toggle
-    if (input === "?") {
-      toggleHelp();
-      return;
-    }
-
-    // Command palette
-    if (input === ":") {
-      toggleCommandPalette();
-      return;
-    }
-
-    // Quit
-    if (input === "q" && !showHelp) {
+    if (input === "c" && key.ctrl) {
       onQuit();
+      return;
+    }
+
+    if (chatFocused) {
+      if (key.escape) {
+        handleChatEscape(viewMode, goBack);
+      }
+      return;
+    }
+
+    if (key.escape) {
+      goBack();
+      return;
+    }
+
+    if (key.tab) {
+      cycleTab();
+      return;
+    }
+
+    if (key.upArrow) {
+      handleArrow("up", viewMode, scroll, moveSelection);
+      return;
+    }
+    if (key.downArrow) {
+      handleArrow("down", viewMode, scroll, moveSelection);
+      return;
+    }
+
+    if (key.return) {
+      handleReturn(chatInput, viewMode, submitChat, openDetail);
+      return;
+    }
+
+    if (input && !key.ctrl && !key.meta && viewMode !== "chat") {
+      focusChat();
+      setChatInput(chatInput + input);
     }
   });
 }
