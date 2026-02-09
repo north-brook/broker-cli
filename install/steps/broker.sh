@@ -234,11 +234,42 @@ install_ib_app() {
     fail "Could not locate an IB Gateway installer executable in mounted DMG (${mount_point}). Found: ${discovered:-<none>}"
   fi
 
-  mkdir -p "$(dirname "${IB_INSTALL_DIR}")"
-  if ! "${installer_stub}" -q -overwrite -dir "${IB_INSTALL_DIR}"; then
-    hdiutil detach "${mount_point}" -quiet || true
-    rm -rf "${tmp_dir}"
-    fail "Silent IB Gateway install failed."
+  local install_parent
+  install_parent="$(dirname "${IB_INSTALL_DIR}")"
+  local -a install_cmd=("${installer_stub}" -q -overwrite -dir "${IB_INSTALL_DIR}")
+
+  if mkdir -p "${install_parent}" 2>/dev/null; then
+    if ! "${install_cmd[@]}"; then
+      hdiutil detach "${mount_point}" -quiet || true
+      rm -rf "${tmp_dir}"
+      fail "Silent IB Gateway install failed."
+    fi
+  else
+    if ! command -v sudo >/dev/null 2>&1; then
+      hdiutil detach "${mount_point}" -quiet || true
+      rm -rf "${tmp_dir}"
+      fail "Installing IB Gateway into ${IB_INSTALL_DIR} requires admin rights, but sudo is unavailable."
+    fi
+    if [[ ! -t 0 || ! -t 1 ]]; then
+      hdiutil detach "${mount_point}" -quiet || true
+      rm -rf "${tmp_dir}"
+      fail "Installing IB Gateway into ${IB_INSTALL_DIR} requires admin rights and an interactive terminal."
+    fi
+
+    printf '%s\n' "IB Gateway will be installed into ${IB_INSTALL_DIR}."
+    printf '%s\n' "Administrator privileges are required to write into ${install_parent}."
+    printf '%s\n' "macOS will now prompt for your password."
+
+    if ! sudo -p "Broker installer needs admin access to install IB Gateway to ${install_parent}. Password: " mkdir -p "${install_parent}"; then
+      hdiutil detach "${mount_point}" -quiet || true
+      rm -rf "${tmp_dir}"
+      fail "Could not create install target parent with sudo: ${install_parent}"
+    fi
+    if ! sudo -p "Broker installer needs admin access to install IB Gateway to ${install_parent}. Password: " "${install_cmd[@]}"; then
+      hdiutil detach "${mount_point}" -quiet || true
+      rm -rf "${tmp_dir}"
+      fail "IB Gateway install with sudo failed."
+    fi
   fi
 
   hdiutil detach "${mount_point}" -quiet || true

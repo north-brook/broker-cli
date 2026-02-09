@@ -112,7 +112,7 @@ banner
 run_step "Preparing broker config/state/data directories" prepare_broker_home
 run_step "Bootstrapping system tooling (Homebrew, uv)" bootstrap_tooling
 run_step "Creating broker config (${BROKER_CONFIG_JSON})" ensure_broker_config
-run_step "Interactive Brokers Gateway setup" install_ib_app
+run_step_interactive "Interactive Brokers Gateway setup" install_ib_app
 run_step "Installing IBC automation package" install_ibc
 run_step "Creating Python runtime" create_python_runtime
 run_step "Installing broker Python packages" install_python_packages
