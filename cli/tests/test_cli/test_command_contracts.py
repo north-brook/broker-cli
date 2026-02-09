@@ -14,8 +14,15 @@ import portfolio
 import risk
 from main import app
 
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
+
+
+def _strip_ansi(text: str) -> str:
+    return _ANSI_ESCAPE_RE.sub("", text)
+
 
 def _extract_commands(help_text: str) -> set[str]:
+    help_text = _strip_ansi(help_text)
     commands: set[str] = set()
     in_commands = False
     for line in help_text.splitlines():
@@ -25,7 +32,7 @@ def _extract_commands(help_text: str) -> set[str]:
             continue
         if in_commands and stripped.startswith("╰"):
             break
-        match = re.match(r"^\s*│\s+([a-z][a-z0-9_-]*)\s{2,}.*│\s*$", line)
+        match = re.match(r"^\s*[│|]\s+([a-z][a-z0-9_-]*)\s{2,}.*[│|]\s*$", line)
         if match:
             commands.add(match.group(1))
     return commands
