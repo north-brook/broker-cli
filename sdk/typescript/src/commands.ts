@@ -1,7 +1,7 @@
 import type { JsonValue } from "./types.js";
 import type {
-  AgentHeartbeatResponse,
-  AgentTopic,
+  EventTopic,
+  KeepaliveResponse,
   AuditSource,
   AuditCommandsResponse,
   AuditExportResponse,
@@ -124,7 +124,7 @@ export interface CommandMap {
     },
     RiskOverrideResponse
   >;
-  "agent.heartbeat": CommandSpec<{ sent_at?: number }, AgentHeartbeatResponse>;
+  "runtime.keepalive": CommandSpec<{ sent_at?: number }, KeepaliveResponse>;
   "audit.commands": CommandSpec<{ source?: AuditSource; since?: string }, AuditCommandsResponse>;
   "audit.orders": CommandSpec<{ status?: OrderStatusFilter; since?: string }, AuditOrdersResponse>;
   "audit.risk": CommandSpec<{ type?: string }, AuditRiskResponse>;
@@ -140,7 +140,7 @@ export interface CommandMap {
     },
     AuditExportResponse
   >;
-  "agent.subscribe": CommandSpec<{ topics: AgentTopic[] }, { subscribed: string[] }>;
+  "events.subscribe": CommandSpec<{ topics: EventTopic[] }, { subscribed: string[] }>;
 }
 
 export type CommandName = keyof CommandMap;

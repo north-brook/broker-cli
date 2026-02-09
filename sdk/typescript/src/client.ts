@@ -17,8 +17,8 @@ import type {
   JsonValue
 } from "./types.js";
 import type {
-  AgentTopic,
-  AgentHeartbeatResponse,
+  EventTopic,
+  KeepaliveResponse,
   AuditSource,
   AuditTable,
   AuditCommandsResponse,
@@ -110,15 +110,15 @@ export class Client {
     }
   }
 
-  async *subscribe(topics: AgentTopic[]): AsyncGenerator<EventEnvelope, void, unknown> {
+  async *subscribeEvents(topics: EventTopic[]): AsyncGenerator<EventEnvelope, void, unknown> {
     const socket = await this.openSocket();
     const reader = new FramedReader(socket);
-    const req = makeRequest("agent.subscribe", { topics }, true, this.source);
+    const req = makeRequest("events.subscribe", { topics }, true, this.source);
 
     socket.write(encodeRequest(req));
 
     const first = decodeResponse(await reader.nextFrame(this.timeoutMs));
-    unwrapResponse<CommandResult<"agent.subscribe">>(first);
+    unwrapResponse<CommandResult<"events.subscribe">>(first);
 
     try {
       while (true) {
@@ -298,8 +298,8 @@ export class Client {
     });
   }
 
-  async heartbeat(sentAt?: number): Promise<AgentHeartbeatResponse> {
-    return this.request("agent.heartbeat", {
+  async keepalive(sentAt?: number): Promise<KeepaliveResponse> {
+    return this.request("runtime.keepalive", {
       sent_at: sentAt ?? Date.now() / 1000
     });
   }

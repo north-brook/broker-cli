@@ -17,7 +17,7 @@ BROKER_CONFIG_JSON="${BROKER_CONFIG_JSON:-${BROKER_CONFIG_HOME}/config.json}"
 BROKER_STATE_HOME="${XDG_STATE_HOME:-${HOME}/.local/state}/broker"
 BROKER_DATA_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/broker"
 BROKER_SOURCE_DIR="${BROKER_SOURCE_DIR:-${BROKER_DATA_HOME}/source}"
-BROKER_REPO="${BROKER_REPO:-https://github.com/brycedbjork/northbrook.git}"
+BROKER_REPO="${BROKER_REPO:-https://github.com/north-brook/broker.git}"
 ORIG_ARGS=("$@")
 ORIG_ARGC=$#
 
@@ -32,7 +32,7 @@ IBC_INSTALL_DIR="${BROKER_IBC_INSTALL_DIR:-${BROKER_DATA_HOME}/ibc}"
 BROKER_BIN_DIR="${BROKER_BIN_DIR:-${HOME}/.local/bin}"
 LOG_DIR="$(mktemp -d /tmp/broker-install.XXXXXX)"
 STEP_INDEX=0
-STEP_TOTAL=9
+STEP_TOTAL=10
 INTERACTIVE=0
 SKIP_ONBOARDING=0
 ONBOARDING_ONLY=0
@@ -112,11 +112,12 @@ banner
 run_step "Preparing broker config/state/data directories" prepare_broker_home
 run_step "Bootstrapping system tooling (Homebrew, uv)" bootstrap_tooling
 run_step "Creating broker config (${BROKER_CONFIG_JSON})" ensure_broker_config
-run_step_interactive "Interactive Brokers Gateway setup" install_ib_app
+run_step "Interactive Brokers Gateway setup" install_ib_app
 run_step "Installing IBC automation package" install_ibc
 run_step "Creating Python runtime" create_python_runtime
 run_step "Installing broker Python packages" install_python_packages
 run_step_interactive "Binding broker CLI command" bind_broker_command
+run_step "Installing shell completions" install_shell_completions
 if [[ "${SKIP_ONBOARDING}" -eq 0 ]]; then
   run_step_interactive "Interactive Brokers credential setup" run_onboarding_wizard
 fi

@@ -3,7 +3,7 @@ set -euo pipefail
 
 BROKER_DATA_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/broker"
 BROKER_SOURCE_DIR="${BROKER_SOURCE_DIR:-${BROKER_DATA_HOME}/source}"
-BROKER_REPO="${BROKER_REPO:-https://github.com/brycedbjork/northbrook.git}"
+BROKER_REPO="${BROKER_REPO:-https://github.com/north-brook/broker.git}"
 
 if ! command -v git >/dev/null 2>&1; then
   echo "git is required to bootstrap broker." >&2

@@ -63,12 +63,6 @@ def build_typer(help_text: str) -> typer.Typer:
     )
 
 
-def resolve_json_mode(json_flag: bool, cfg: AppConfig) -> bool:
-    _ = json_flag
-    _ = cfg
-    return True
-
-
 def get_state(ctx: typer.Context) -> CLIState:
     value = ctx.obj
     if not isinstance(value, CLIState):

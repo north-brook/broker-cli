@@ -2,11 +2,11 @@
 
 from broker_sdk.client import Client
 from broker_sdk.types import (
-    AGENT_TOPICS,
+    EVENT_TOPICS,
     AUDIT_SOURCES,
     AUDIT_TABLES,
     BAR_SIZES,
-    AgentTopic,
+    EventTopic,
     AuditSource,
     AuditTable,
     BarSize,
@@ -28,8 +28,8 @@ from broker_sdk.types import (
 
 __all__ = [
     "Client",
-    "AGENT_TOPICS",
-    "AgentTopic",
+    "EVENT_TOPICS",
+    "EventTopic",
     "AUDIT_SOURCES",
     "AUDIT_TABLES",
     "AuditSource",

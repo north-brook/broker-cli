@@ -10,6 +10,56 @@ install_python_packages() {
   .venv/bin/python -m pip install -e './daemon' -e './sdk/python' -e './cli'
 }
 
+install_shell_completions() {
+  local generator="${ROOT_DIR}/scripts/generate-completions.sh"
+  if [[ ! -x "${generator}" ]]; then
+    warn "Completion generator is missing at ${generator}; skipping shell completions."
+    return 0
+  fi
+
+  local broker_cmd="${BROKER_BIN_DIR}/broker"
+  local tmp_dir
+  tmp_dir="$(mktemp -d /tmp/broker-completions.XXXXXX)"
+  if ! BROKER_BIN="${broker_cmd}" "${generator}" "${tmp_dir}" >/dev/null 2>&1; then
+    rm -rf "${tmp_dir}"
+    warn "Failed to generate broker shell completions; skipping."
+    return 0
+  fi
+
+  local zsh_source="${tmp_dir}/broker.zsh"
+  local bash_source="${tmp_dir}/broker.bash"
+  local fish_source="${tmp_dir}/broker.fish"
+  if [[ ! -f "${zsh_source}" || ! -f "${bash_source}" || ! -f "${fish_source}" ]]; then
+    rm -rf "${tmp_dir}"
+    warn "Generated completion files are incomplete; skipping shell completions."
+    return 0
+  fi
+
+  local zsh_target_dir="${HOME}/.zfunc"
+  mkdir -p "${zsh_target_dir}"
+  cp "${zsh_source}" "${zsh_target_dir}/_broker"
+
+  if [[ -d "${HOME}/.oh-my-zsh" ]]; then
+    local omz_target_dir="${HOME}/.oh-my-zsh/custom/completions"
+    mkdir -p "${omz_target_dir}"
+    cp "${zsh_source}" "${omz_target_dir}/_broker"
+  fi
+
+  # Force zsh to rebuild completion cache so newly installed _broker is picked up.
+  local zdotdir="${ZDOTDIR:-${HOME}}"
+  rm -f "${zdotdir}/.zcompdump"* 2>/dev/null || true
+
+  local bash_target_dir="${HOME}/.local/share/bash-completion/completions"
+  mkdir -p "${bash_target_dir}"
+  cp "${bash_source}" "${bash_target_dir}/broker"
+
+  local fish_target_dir="${HOME}/.config/fish/completions"
+  mkdir -p "${fish_target_dir}"
+  cp "${fish_source}" "${fish_target_dir}/broker.fish"
+
+  rm -rf "${tmp_dir}"
+}
+
 bind_broker_command() {
   local broker_cli="${ROOT_DIR}/.venv/bin/broker"
   local broker_path="${BROKER_BIN_DIR}/broker"

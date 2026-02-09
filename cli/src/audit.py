@@ -15,7 +15,6 @@ app = build_typer("Audit log queries and exports.")
 class AuditSource(str, Enum):
     CLI = "cli"
     SDK = "sdk"
-    AGENT = "agent"
     TS_SDK = "ts_sdk"
 
 

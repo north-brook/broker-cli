@@ -11,9 +11,9 @@ BAR_SIZES = ("1m", "5m", "15m", "1h", "1d")
 OPTION_TYPES = ("call", "put")
 ORDER_STATUS_FILTERS = ("active", "filled", "cancelled", "all")
 EXPOSURE_GROUPS = ("sector", "asset_class", "currency", "symbol")
-AGENT_TOPICS = ("orders", "fills", "positions", "pnl", "risk", "connection")
+EVENT_TOPICS = ("orders", "fills", "positions", "pnl", "risk", "connection")
 AUDIT_TABLES = ("orders", "commands", "risk")
-AUDIT_SOURCES = ("cli", "sdk", "agent", "ts_sdk")
+AUDIT_SOURCES = ("cli", "sdk", "ts_sdk")
 RISK_PARAMS = (
     "max_position_pct",
     "max_order_value",
@@ -34,9 +34,9 @@ BarSize: TypeAlias = Literal["1m", "5m", "15m", "1h", "1d"]
 OptionType: TypeAlias = Literal["call", "put"]
 OrderStatusFilter: TypeAlias = Literal["active", "filled", "cancelled", "all"]
 ExposureGroupBy: TypeAlias = Literal["sector", "asset_class", "currency", "symbol"]
-AgentTopic: TypeAlias = Literal["orders", "fills", "positions", "pnl", "risk", "connection"]
+EventTopic: TypeAlias = Literal["orders", "fills", "positions", "pnl", "risk", "connection"]
 AuditTable: TypeAlias = Literal["orders", "commands", "risk"]
-AuditSource: TypeAlias = Literal["cli", "sdk", "agent", "ts_sdk"]
+AuditSource: TypeAlias = Literal["cli", "sdk", "ts_sdk"]
 RiskParam: TypeAlias = Literal[
     "max_position_pct",
     "max_order_value",

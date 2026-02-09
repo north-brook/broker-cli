@@ -3,7 +3,7 @@ export type { ClientOptions } from "./client.js";
 export { loadConfig, resolveJsonMode } from "./config.js";
 export { ErrorCode, BrokerError } from "./errors.js";
 export {
-  AGENT_TOPICS,
+  EVENT_TOPICS,
   AUDIT_SOURCES,
   AUDIT_TABLES,
   BAR_SIZES,
@@ -41,8 +41,8 @@ export type {
 } from "./types.js";
 
 export type {
-  AgentTopic,
-  AgentHeartbeatResponse,
+  EventTopic,
+  KeepaliveResponse,
   AuditSource,
   AuditTable,
   AuditCommandsResponse,

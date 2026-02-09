@@ -7,7 +7,7 @@ Broker is an Interactive Brokers execution stack with a local daemon, CLI, and S
 Install using the hosted bootstrap script:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/brycedbjork/northbrook/main/install/bootstrap.sh | bash
+curl -fsSL https://raw.githubusercontent.com/north-brook/broker/main/install/bootstrap.sh | bash
 ```
 
 If you already have the repo cloned locally:

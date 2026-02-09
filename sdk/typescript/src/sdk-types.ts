@@ -7,9 +7,9 @@ export const BAR_SIZES = ["1m", "5m", "15m", "1h", "1d"] as const;
 export const OPTION_TYPES = ["call", "put"] as const;
 export const ORDER_STATUS_FILTERS = ["active", "filled", "cancelled", "all"] as const;
 export const EXPOSURE_GROUPS = ["sector", "asset_class", "currency", "symbol"] as const;
-export const AGENT_TOPICS = ["orders", "fills", "positions", "pnl", "risk", "connection"] as const;
+export const EVENT_TOPICS = ["orders", "fills", "positions", "pnl", "risk", "connection"] as const;
 export const AUDIT_TABLES = ["orders", "commands", "risk"] as const;
-export const AUDIT_SOURCES = ["cli", "sdk", "agent", "ts_sdk"] as const;
+export const AUDIT_SOURCES = ["cli", "sdk", "ts_sdk"] as const;
 export const RISK_PARAMS = [
   "max_position_pct",
   "max_order_value",
@@ -30,7 +30,7 @@ export type BarSize = (typeof BAR_SIZES)[number];
 export type OptionType = (typeof OPTION_TYPES)[number];
 export type OrderStatusFilter = (typeof ORDER_STATUS_FILTERS)[number];
 export type ExposureGroupBy = (typeof EXPOSURE_GROUPS)[number];
-export type AgentTopic = (typeof AGENT_TOPICS)[number];
+export type EventTopic = (typeof EVENT_TOPICS)[number];
 export type AuditTable = (typeof AUDIT_TABLES)[number];
 export type AuditSource = (typeof AUDIT_SOURCES)[number];
 export type RiskParam = (typeof RISK_PARAMS)[number];
@@ -267,7 +267,7 @@ export interface RiskOverrideResponse {
   override: RiskOverride;
 }
 
-export interface AgentHeartbeatResponse {
+export interface KeepaliveResponse {
   ok: boolean;
   latency_ms: number | null;
   connected: boolean;

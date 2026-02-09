@@ -53,8 +53,8 @@ KNOWN_COMMANDS: tuple[str, ...] = (
     "risk.halt",
     "risk.resume",
     "risk.override",
-    "agent.heartbeat",
-    "agent.subscribe",
+    "runtime.keepalive",
+    "events.subscribe",
     "audit.commands",
     "audit.orders",
     "audit.risk",
@@ -157,7 +157,7 @@ class DaemonServer:
             payload = await read_framed(reader)
             request = decode_request(payload)
 
-            if request.stream and request.command == "agent.subscribe":
+            if request.stream and request.command == "events.subscribe":
                 await self._register_subscriber(request, reader, writer)
                 return
 
@@ -412,7 +412,7 @@ class DaemonServer:
             await self._audit.log_risk_event("override", override.model_dump(mode="json"))
             return {"override": override.model_dump(mode="json")}
 
-        if cmd == "agent.heartbeat":
+        if cmd == "runtime.keepalive":
             self._heartbeat.beat()
             sent_at = p.get("sent_at")
             latency_ms = None

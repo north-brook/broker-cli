@@ -4,17 +4,16 @@ from __future__ import annotations
 
 import typer
 
-import agent
 import audit
 import daemon
 import market
 import orders
 import portfolio
 import risk
-from _common import CLIState, build_typer, load_config, resolve_json_mode
+from _common import CLIState, build_typer, load_config
 
 app = build_typer(
-    """Broker command-line interface for agent-facing trading, portfolio, risk, and audit workflows.
+    """Broker command-line interface for trading, portfolio, risk, and audit workflows.
 
     Examples:
       broker quote AAPL MSFT
@@ -28,7 +27,6 @@ app.add_typer(market.app)
 app.add_typer(orders.order_app, name="order")
 app.add_typer(portfolio.app)
 app.add_typer(risk.app)
-app.add_typer(agent.app, name="agent")
 app.add_typer(audit.app, name="audit")
 
 # Flat commands required by spec.
@@ -38,16 +36,9 @@ app.command("fills", help="List fills/execution history.")(orders.fills)
 
 
 @app.callback()
-def root(
-    ctx: typer.Context,
-    json_output: bool = typer.Option(
-        False,
-        "--json",
-        help="Retained for compatibility. Broker CLI output is JSON by default.",
-    ),
-) -> None:
+def root(ctx: typer.Context) -> None:
     cfg = load_config()
-    ctx.obj = CLIState(config=cfg, json_output=resolve_json_mode(json_output, cfg))
+    ctx.obj = CLIState(config=cfg, json_output=True)
 
 
 def run() -> None:

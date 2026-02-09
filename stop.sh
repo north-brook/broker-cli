@@ -87,7 +87,7 @@ if [[ -z "${DAEMON_PID}" ]] || ! is_daemon_pid_running "${DAEMON_PID}"; then
 fi
 
 set +e
-STOP_OUTPUT="$("${BROKER_BIN}" --json daemon stop "$@" 2>&1)"
+STOP_OUTPUT="$("${BROKER_BIN}" daemon stop "$@" 2>&1)"
 status=$?
 set -e
 

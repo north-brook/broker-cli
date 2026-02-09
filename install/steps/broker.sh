@@ -446,6 +446,14 @@ launch_ib_gateway_app() {
 
   if [[ "${auto_login}" == "true" && -n "${username}" && -n "${password}" ]]; then
     launch_ib_gateway_with_ibc_autologin "${app_path}" "${mode}" "${username}" "${password}"
+    if command -v lsof >/dev/null 2>&1; then
+      if ! wait_for_ib_api_listener "${mode}" 45; then
+        tail -n 40 "${BROKER_IBC_LOG_FILE}" 2>/dev/null || true
+        fail "IBC started but no IB API listener was detected after 45s. See ${BROKER_IBC_LOG_FILE}."
+      fi
+    else
+      warn "lsof is unavailable; unable to verify IB API listener after IBC launch."
+    fi
     return 0
   fi
 
@@ -481,6 +489,36 @@ resolve_ibc_tws_major_version() {
   fi
 
   return 1
+}
+
+resolve_ibc_tws_path() {
+  local app_path="$1"
+  local tws_major="$2"
+  local app_root
+  app_root="$(dirname "${app_path}")"
+
+  # Some macOS installs place jars directly alongside the .app bundle.
+  # IBC expects <tws-path>/IB Gateway <major>/jars, so create a bridge path.
+  if [[ -d "${app_root}/jars" ]]; then
+    local bridge_root="${BROKER_STATE_HOME}/ibc-tws"
+    mkdir -p "${bridge_root}"
+    ln -sfn "${app_root}" "${bridge_root}/IB Gateway ${tws_major}"
+    printf '%s\n' "${bridge_root}"
+    return 0
+  fi
+
+  local parent
+  parent="$(dirname "${app_root}")"
+  if [[ -d "${parent}/IB Gateway ${tws_major}/jars" ]]; then
+    printf '%s\n' "${parent}"
+    return 0
+  fi
+  if [[ -d "${app_root}/IB Gateway ${tws_major}/jars" ]]; then
+    printf '%s\n' "${app_root}"
+    return 0
+  fi
+
+  printf '%s\n' "${app_root}"
 }
 
 ensure_ibc_launch_ini() {
@@ -520,7 +558,7 @@ else:
 updates = {
     "TradingMode": trading_mode,
     "AcceptNonBrokerageAccountWarning": "yes",
-    "ReloginAfterSecondFactorAuthenticationTimeout": "restart",
+    "ReloginAfterSecondFactorAuthenticationTimeout": "yes",
     "IbDir": ib_dir,
 }
 
@@ -563,7 +601,7 @@ launch_ib_gateway_with_ibc_autologin() {
   ensure_ibc_launch_ini "${mode}"
 
   local tws_path
-  tws_path="$(dirname "${app_path}")"
+  tws_path="$(resolve_ibc_tws_path "${app_path}" "${tws_major}")"
 
   mkdir -p "$(dirname "${BROKER_IBC_LOG_FILE}")"
   nohup \
@@ -571,6 +609,7 @@ launch_ib_gateway_with_ibc_autologin() {
     "${tws_major}" \
     --gateway \
     "--tws-path=${tws_path}" \
+    "--tws-settings-path=${BROKER_IB_SETTINGS_DIR}" \
     "--ibc-path=${IBC_INSTALL_DIR}" \
     "--ibc-ini=${BROKER_IBC_INI}" \
     "--mode=${mode}" \
@@ -578,4 +617,28 @@ launch_ib_gateway_with_ibc_autologin() {
     "--user=${username}" \
     "--pw=${password}" \
     >"${BROKER_IBC_LOG_FILE}" 2>&1 &
+  local ibc_pid=$!
+  sleep 2
+  if ! kill -0 "${ibc_pid}" >/dev/null 2>&1; then
+    tail -n 40 "${BROKER_IBC_LOG_FILE}" 2>/dev/null || true
+    fail "IBC headless launch exited immediately. See ${BROKER_IBC_LOG_FILE}."
+  fi
+}
+
+wait_for_ib_api_listener() {
+  local mode="$1"
+  local timeout_seconds="$2"
+  local target_port="4002"
+  if [[ "${mode}" == "live" ]]; then
+    target_port="4001"
+  fi
+
+  local deadline=$((SECONDS + timeout_seconds))
+  while ((SECONDS < deadline)); do
+    if lsof -nP -iTCP -sTCP:LISTEN 2>/dev/null | grep -Eq "[:.]${target_port}[[:space:]].*LISTEN"; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
 }

@@ -306,6 +306,16 @@ wait_for_any_port() {
   return 1
 }
 
+has_ibc_auto_login_credentials() {
+  case "$(lowercase "${IB_AUTO_LOGIN}")" in
+    1|true|yes|on)
+      [[ -n "${IB_LOGIN_USERNAME}" && -n "${IB_LOGIN_PASSWORD}" ]]
+      return
+      ;;
+  esac
+  return 1
+}
+
 resolve_ibc_tws_major_version() {
   local app_path="$1"
   local name
@@ -326,6 +336,37 @@ resolve_ibc_tws_major_version() {
   fi
 
   return 1
+}
+
+resolve_ibc_tws_path() {
+  local app_path="$1"
+  local tws_major="$2"
+  local app_root
+  app_root="$(dirname "${app_path}")"
+
+  # Some macOS installs place jars directly alongside the .app bundle
+  # (for example /Applications/IB Gateway/jars). IBC expects
+  # <tws-path>/IB Gateway <major>/jars, so create a stable bridge path.
+  if [[ -d "${app_root}/jars" ]]; then
+    local bridge_root="${BROKER_STATE_HOME}/ibc-tws"
+    mkdir -p "${bridge_root}"
+    ln -sfn "${app_root}" "${bridge_root}/IB Gateway ${tws_major}"
+    printf '%s\n' "${bridge_root}"
+    return 0
+  fi
+
+  local parent
+  parent="$(dirname "${app_root}")"
+  if [[ -d "${parent}/IB Gateway ${tws_major}/jars" ]]; then
+    printf '%s\n' "${parent}"
+    return 0
+  fi
+  if [[ -d "${app_root}/IB Gateway ${tws_major}/jars" ]]; then
+    printf '%s\n' "${app_root}"
+    return 0
+  fi
+
+  printf '%s\n' "${app_root}"
 }
 
 ensure_ibc_ini() {
@@ -356,7 +397,7 @@ else:
 updates = {
     "TradingMode": trading_mode,
     "AcceptNonBrokerageAccountWarning": "yes",
-    "ReloginAfterSecondFactorAuthenticationTimeout": "restart",
+    "ReloginAfterSecondFactorAuthenticationTimeout": "yes",
     "IbDir": ib_dir,
 }
 
@@ -401,7 +442,7 @@ launch_ib_with_ibc() {
     return 1
   fi
   local tws_path
-  tws_path="$(dirname "${app_path}")"
+  tws_path="$(resolve_ibc_tws_path "${app_path}" "${tws_major}")"
 
   local ibc_mode="paper"
   if [[ "${mode}" == "live" ]]; then
@@ -414,6 +455,7 @@ launch_ib_with_ibc() {
     "${tws_major}"
     --gateway
     "--tws-path=${tws_path}"
+    "--tws-settings-path=${IB_SETTINGS_DIR}"
     "--ibc-path=${IBC_PATH}"
     "--ibc-ini=${IBC_INI}"
     "--mode=${ibc_mode}"
@@ -432,7 +474,27 @@ launch_ib_with_ibc() {
 
   mkdir -p "$(dirname "${IBC_LOG_FILE}")"
   nohup "${cmd[@]}" >"${IBC_LOG_FILE}" 2>&1 &
+  local ibc_pid=$!
+  sleep 2
+  if ! kill -0 "${ibc_pid}" >/dev/null 2>&1; then
+    echo "IBC exited immediately after launch."
+    echo "IBC launch log: ${IBC_LOG_FILE}"
+    tail -n 40 "${IBC_LOG_FILE}" 2>/dev/null || true
+    return 1
+  fi
   return 0
+}
+
+force_stop_ibc_session() {
+  if [[ -x "${IBC_PATH}/stop.sh" ]]; then
+    "${IBC_PATH}/stop.sh" >/dev/null 2>&1 || true
+    sleep 2
+  fi
+
+  if command -v pkill >/dev/null 2>&1; then
+    pkill -f "ibcalpha\\.ibc\\.(IbcGateway|IbcTws).*${IBC_INI}" >/dev/null 2>&1 || true
+    sleep 1
+  fi
 }
 
 is_valid_gateway_app_bundle() {
@@ -552,6 +614,10 @@ maybe_launch_ib() {
   fi
   echo "No IB API listener detected; launching $(basename "${app_path}") via IBC."
   if ! launch_ib_with_ibc "${app_path}" "${launch_mode}"; then
+    if has_ibc_auto_login_credentials; then
+      echo "IBC launch failed; broker daemon will not be started."
+      return 1
+    fi
     echo "IBC launch failed; broker daemon may remain disconnected."
     return 0
   fi
@@ -559,9 +625,26 @@ maybe_launch_ib() {
   if wait_for_any_port "${IB_WAIT_SECONDS}" "${target_ports[@]}"; then
     echo "Detected IB API listener."
   else
+    if has_ibc_auto_login_credentials; then
+      echo "Timed out waiting for IB API listener (${IB_WAIT_SECONDS}s). Retrying IBC authentication once."
+      force_stop_ibc_session
+      if ! launch_ib_with_ibc "${app_path}" "${launch_mode}"; then
+        echo "IBC relaunch failed; broker daemon will not be started."
+        return 1
+      fi
+      if wait_for_any_port "${IB_WAIT_SECONDS}" "${target_ports[@]}"; then
+        echo "Detected IB API listener after IBC re-auth retry."
+        return 0
+      fi
+      echo "Timed out again waiting for IB API listener (${IB_WAIT_SECONDS}s) after retry."
+      echo "IBC launch log: ${IBC_LOG_FILE}"
+      return 1
+    fi
+
     echo "Timed out waiting for IB API listener (${IB_WAIT_SECONDS}s)."
     echo "IBC launch log: ${IBC_LOG_FILE}"
   fi
+  return 0
 }
 
 read_daemon_pid() {
@@ -611,7 +694,9 @@ else
   TARGET_PORTS=(4002 4001)
 fi
 
-maybe_launch_ib "${TARGET_PORTS[@]}"
+if ! maybe_launch_ib "${TARGET_PORTS[@]}"; then
+  exit 1
+fi
 
 START_ARGS=()
 if (( ${#PASSTHROUGH[@]} > 0 )); then
@@ -639,7 +724,7 @@ if [[ "${HAS_GATEWAY}" -eq 0 ]]; then
   fi
 fi
 
-PRE_STATUS_JSON="$("${BROKER_BIN}" --json daemon status 2>/dev/null || true)"
+PRE_STATUS_JSON="$("${BROKER_BIN}" daemon status 2>/dev/null || true)"
 if [[ -n "${PRE_STATUS_JSON}" && "${PRE_STATUS_JSON}" == *'"connected":false'* ]]; then
   PRE_PORT="$(printf '%s' "${PRE_STATUS_JSON}" | sed -n 's/.*"port":\([0-9][0-9]*\).*/\1/p')"
   echo "Existing daemon is running but disconnected on localhost:${PRE_PORT}; restarting."
@@ -657,7 +742,7 @@ echo "Starting broker daemon with: ${BROKER_BIN} daemon start ${START_ARGS[*]}"
 "${BROKER_BIN}" daemon start "${START_ARGS[@]}"
 
 echo "Daemon status:"
-STATUS_JSON="$("${BROKER_BIN}" --json daemon status 2>/dev/null || true)"
+STATUS_JSON="$("${BROKER_BIN}" daemon status 2>/dev/null || true)"
 if [[ -n "${STATUS_JSON}" ]]; then
   echo "${STATUS_JSON}"
   if [[ "${STATUS_JSON}" == *'"connected":false'* ]]; then

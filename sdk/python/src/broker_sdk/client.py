@@ -12,10 +12,10 @@ from broker_daemon.config import load_config
 from broker_daemon.exceptions import ErrorCode, BrokerError
 from broker_daemon.protocol import Request, Response, decode_event, decode_response, encode_model, frame_payload, read_framed
 from broker_sdk.types import (
-    AgentTopic,
     AuditSource,
     AuditTable,
     BarSize,
+    EventTopic,
     ExposureGroupBy,
     HistoryPeriod,
     OptionType,
@@ -76,9 +76,9 @@ class Client:
         response = decode_response(payload)
         return _unwrap_response(response)
 
-    async def subscribe(self, topics: Iterable[AgentTopic]) -> AsyncIterator[dict[str, Any]]:
+    async def subscribe_events(self, topics: Iterable[EventTopic]) -> AsyncIterator[dict[str, Any]]:
         """Stream daemon events for the requested topic list."""
-        req = Request(command="agent.subscribe", params={"topics": list(topics)}, stream=True, source="sdk")
+        req = Request(command="events.subscribe", params={"topics": list(topics)}, stream=True, source="sdk")
         try:
             reader, writer = await asyncio.open_unix_connection(str(self._socket_path))
         except FileNotFoundError as exc:
@@ -269,8 +269,8 @@ class Client:
             {"param": param, "value": value, "duration": duration, "reason": reason},
         )
 
-    async def heartbeat(self) -> dict[str, Any]:
-        return await self._request("agent.heartbeat", {"sent_at": time.time()})
+    async def keepalive(self) -> dict[str, Any]:
+        return await self._request("runtime.keepalive", {"sent_at": time.time()})
 
     async def audit_commands(self, source: AuditSource | None = None, since: str | None = None) -> dict[str, Any]:
         params: dict[str, Any] = {}
