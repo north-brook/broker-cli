@@ -16,6 +16,68 @@ is_valid_gateway_app_bundle() {
   return 1
 }
 
+resolve_app_bundle_executable() {
+  local app_path="$1"
+  local macos_dir="${app_path}/Contents/MacOS"
+  [[ -d "${macos_dir}" ]] || return 1
+
+  local stub="${macos_dir}/JavaApplicationStub"
+  if [[ -x "${stub}" ]]; then
+    printf '%s\n' "${stub}"
+    return 0
+  fi
+
+  local plist_path="${app_path}/Contents/Info.plist"
+  if [[ -f "${plist_path}" && -x "/usr/libexec/PlistBuddy" ]]; then
+    local bundle_executable=""
+    bundle_executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "${plist_path}" 2>/dev/null || true)"
+    if [[ -n "${bundle_executable}" && -x "${macos_dir}/${bundle_executable}" ]]; then
+      printf '%s\n' "${macos_dir}/${bundle_executable}"
+      return 0
+    fi
+  fi
+
+  local candidate=""
+  for candidate in "${macos_dir}"/*; do
+    if [[ -f "${candidate}" && -x "${candidate}" ]]; then
+      printf '%s\n' "${candidate}"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+find_ib_gateway_installer_executable() {
+  local mount_point="$1"
+  [[ -d "${mount_point}" ]] || return 1
+
+  local executable=""
+  if executable="$(resolve_app_bundle_executable "${mount_point}/IB Gateway Installer.app")"; then
+    printf '%s\n' "${executable}"
+    return 0
+  fi
+
+  local app_path=""
+  local app_name=""
+  while IFS= read -r -d '' app_path; do
+    app_name="$(basename "${app_path}")"
+    case "${app_name}" in
+      *Uninstaller.app)
+        continue
+        ;;
+      *Installer.app|Install*.app|*IB*Gateway*.app)
+        if executable="$(resolve_app_bundle_executable "${app_path}")"; then
+          printf '%s\n' "${executable}"
+          return 0
+        fi
+        ;;
+    esac
+  done < <(find "${mount_point}" -maxdepth 3 -type d -name "*.app" -print0 2>/dev/null)
+
+  return 1
+}
+
 resolve_ib_gateway_app_from_root() {
   local root="$1"
   [[ -d "${root}" ]] || return 1
@@ -133,14 +195,14 @@ install_ib_app() {
   fi
 
   local installer_stub=""
-  if [[ -x "${mount_point}/IB Gateway Installer.app/Contents/MacOS/JavaApplicationStub" ]]; then
-    installer_stub="${mount_point}/IB Gateway Installer.app/Contents/MacOS/JavaApplicationStub"
-  fi
+  installer_stub="$(find_ib_gateway_installer_executable "${mount_point}" || true)"
 
   if [[ -z "${installer_stub}" || ! -x "${installer_stub}" ]]; then
+    local discovered=""
+    discovered="$(find "${mount_point}" -maxdepth 3 \( -name "*.app" -o -name "*.pkg" \) -print 2>/dev/null | sed "s|^${mount_point}/||" || true)"
     hdiutil detach "${mount_point}" -quiet || true
     rm -rf "${tmp_dir}"
-    fail "Could not locate installer at ${mount_point}/IB Gateway Installer.app/Contents/MacOS/JavaApplicationStub"
+    fail "Could not locate an IB Gateway installer executable in mounted DMG (${mount_point}). Found: ${discovered:-<none>}"
   fi
 
   mkdir -p "$(dirname "${IB_INSTALL_DIR}")"
