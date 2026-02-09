@@ -19,6 +19,7 @@ BROKER_DATA_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/broker"
 BROKER_SOURCE_DIR="${BROKER_SOURCE_DIR:-${BROKER_DATA_HOME}/source}"
 BROKER_REPO="${BROKER_REPO:-https://github.com/brycedbjork/northbrook.git}"
 ORIG_ARGS=("$@")
+ORIG_ARGC=$#
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:/home/linuxbrew/.linuxbrew/bin:${PATH}"
 
@@ -47,7 +48,7 @@ export BROKER_IBC_INI="${BROKER_IBC_PATH}/config.ini"
 export BROKER_IBC_LOG_FILE="${BROKER_STATE_HOME}/logs/ibc-launch.log"
 export BROKER_IB_SETTINGS_DIR="${BROKER_STATE_HOME}/ib-settings"
 
-for arg in "${ORIG_ARGS[@]}"; do
+for arg in "$@"; do
   case "${arg}" in
     --skip-onboarding)
       SKIP_ONBOARDING=1

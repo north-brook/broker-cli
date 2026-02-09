@@ -23,7 +23,10 @@ ensure_source_checkout() {
     git clone --depth=1 "${BROKER_REPO}" "${BROKER_SOURCE_DIR}"
   fi
 
-  exec "${BROKER_SOURCE_DIR}/install/main.sh" "${ORIG_ARGS[@]}"
+  if [[ "${ORIG_ARGC:-0}" -gt 0 ]]; then
+    exec "${BROKER_SOURCE_DIR}/install/main.sh" "${ORIG_ARGS[@]}"
+  fi
+  exec "${BROKER_SOURCE_DIR}/install/main.sh"
 }
 
 ensure_homebrew() {
