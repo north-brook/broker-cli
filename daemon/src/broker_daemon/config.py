@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 def _env_path(name: str, fallback: Path) -> Path:
@@ -69,12 +69,21 @@ class RuntimeConfig(BaseModel):
 
 
 class AppConfig(BaseModel):
+    provider: str = "ib"
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     risk: RiskConfig = Field(default_factory=RiskConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     agent: AgentConfig = Field(default_factory=AgentConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
+
+    @field_validator("provider")
+    @classmethod
+    def _validate_provider(cls, value: str) -> str:
+        provider = value.strip().lower()
+        if provider != "ib":
+            raise ValueError("only provider 'ib' is currently supported")
+        return provider
 
     def expanded(self) -> "AppConfig":
         clone = self.model_copy(deep=True)
@@ -132,6 +141,9 @@ def _extract_broker_config(data: dict[str, Any]) -> dict[str, Any]:
     sections = {"gateway", "risk", "logging", "agent", "output", "runtime"}
 
     if isinstance(raw_broker, dict):
+        provider = raw_broker.get("provider")
+        if isinstance(provider, str) and provider.strip():
+            out["provider"] = provider
         for section in sections:
             value = raw_broker.get(section)
             if isinstance(value, dict):
@@ -151,6 +163,9 @@ def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
     result = dict(data)
     sections = {"gateway", "risk", "logging", "agent", "output", "runtime"}
     for key, raw in os.environ.items():
+        if key == "BROKER_PROVIDER":
+            result["provider"] = raw.strip()
+            continue
         if not key.startswith("BROKER_"):
             continue
         tokens = key[len("BROKER_") :].lower().split("_")

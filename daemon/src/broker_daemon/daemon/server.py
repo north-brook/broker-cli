@@ -18,13 +18,13 @@ from pydantic import ValidationError
 from broker_daemon.audit.logger import AuditLogger
 from broker_daemon.audit.query import export_rows_to_csv, query_commands, query_orders, query_risk_events
 from broker_daemon.config import AppConfig, load_config
-from broker_daemon.daemon.connection import IBConnectionManager
 from broker_daemon.daemon.market_data import MarketDataService
 from broker_daemon.daemon.order_manager import OrderManager
 from broker_daemon.exceptions import ErrorCode, BrokerError
 from broker_daemon.models.events import Event, EventTopic
 from broker_daemon.models.orders import FillRecord, OrderRequest
 from broker_daemon.protocol import ErrorResponse, EventEnvelope, Request, Response, decode_request, encode_model, frame_payload, read_framed
+from broker_daemon.providers import BrokerProvider, IBProvider
 from broker_daemon.risk.engine import RiskEngine
 from broker_daemon.risk.monitor import ConnectionLossMonitor, HeartbeatMonitor
 
@@ -81,10 +81,14 @@ class DaemonServer:
         self._heartbeat = HeartbeatMonitor(cfg.agent.heartbeat_timeout_seconds)
         self._connection_loss = ConnectionLossMonitor(threshold_seconds=30)
 
-        self._connection = IBConnectionManager(cfg.gateway, audit=self._audit, event_cb=self._on_broker_event)
-        self._market_data = MarketDataService(self._connection)
+        if cfg.provider == "ib":
+            self._provider: BrokerProvider = IBProvider(cfg.gateway, audit=self._audit, event_cb=self._on_broker_event)
+        else:
+            raise ValueError(f"unsupported provider '{cfg.provider}'")
+
+        self._market_data = MarketDataService(self._provider)
         self._orders = OrderManager(
-            connection=self._connection,
+            provider=self._provider,
             risk=self._risk,
             audit=self._audit,
             event_cb=self._broadcast_event,
@@ -101,7 +105,7 @@ class DaemonServer:
     async def start(self) -> None:
         self._cfg.ensure_dirs()
         await self._audit.start()
-        await self._connection.start()
+        await self._provider.start()
 
         if self.socket_path.exists():
             self.socket_path.unlink()
@@ -140,7 +144,7 @@ class DaemonServer:
             await self._server.wait_closed()
             self._server = None
 
-        await self._connection.stop()
+        await self._provider.stop()
         await self._audit.log_connection_event("daemon_stopped", {})
         await self._audit.close()
 
@@ -148,6 +152,11 @@ class DaemonServer:
             self.socket_path.unlink()
         if self._cfg.runtime.pid_file.exists():
             self._cfg.runtime.pid_file.unlink()
+
+    def _require_capability(self, capability: str, label: str) -> None:
+        if self._provider.capabilities.get(capability):
+            return
+        raise BrokerError(ErrorCode.INVALID_ARGS, f"provider does not support {label}")
 
     async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         request: Request | None = None
@@ -263,7 +272,8 @@ class DaemonServer:
             return {"quotes": [q.model_dump(mode="json") for q in quotes]}
 
         if cmd == "market.history":
-            bars = await self._connection.history(
+            self._require_capability("history", "historical bars")
+            bars = await self._provider.history(
                 symbol=str(p["symbol"]),
                 period=str(p.get("period", "30d")),
                 bar=str(p.get("bar", "1h")),
@@ -272,6 +282,7 @@ class DaemonServer:
             return {"bars": [b.model_dump(mode="json") for b in bars]}
 
         if cmd == "market.chain":
+            self._require_capability("option_chain", "option chains")
             strike_range = _parse_strike_range(p.get("strike_range"))
             option_type = p.get("type")
             if option_type is not None and str(option_type).lower() not in OPTION_TYPES:
@@ -281,7 +292,7 @@ class DaemonServer:
                     details={"valid_types": sorted(OPTION_TYPES)},
                     suggestion="Use --type call or --type put",
                 )
-            chain = await self._connection.option_chain(
+            chain = await self._provider.option_chain(
                 symbol=str(p["symbol"]),
                 expiry_prefix=p.get("expiry"),
                 strike_range=strike_range,
@@ -290,21 +301,22 @@ class DaemonServer:
             return chain.model_dump(mode="json")
 
         if cmd == "portfolio.positions":
-            positions = await self._connection.positions()
+            positions = await self._provider.positions()
             symbol = p.get("symbol")
             if symbol:
                 positions = [x for x in positions if x.symbol.upper() == str(symbol).upper()]
             return {"positions": [x.model_dump(mode="json") for x in positions]}
 
         if cmd == "portfolio.balance":
-            return {"balance": (await self._connection.balance()).model_dump(mode="json")}
+            return {"balance": (await self._provider.balance()).model_dump(mode="json")}
 
         if cmd == "portfolio.pnl":
-            return {"pnl": (await self._connection.pnl()).model_dump(mode="json")}
+            return {"pnl": (await self._provider.pnl()).model_dump(mode="json")}
 
         if cmd == "portfolio.exposure":
+            self._require_capability("exposure", "portfolio exposure")
             by = str(p.get("by", "symbol"))
-            rows = await self._connection.exposure(by)
+            rows = await self._provider.exposure(by)
             return {"exposure": [r.model_dump(mode="json") for r in rows], "by": by}
 
         if cmd == "order.place":
@@ -313,6 +325,7 @@ class DaemonServer:
             return {"order": record.model_dump(mode="json")}
 
         if cmd == "order.bracket":
+            self._require_capability("bracket_orders", "bracket orders")
             res = await self._orders.place_bracket(
                 side=str(p.get("side", "buy")),
                 symbol=str(p["symbol"]),
@@ -356,6 +369,7 @@ class DaemonServer:
                     ErrorCode.INVALID_ARGS,
                     "cancel --all requires --confirm (unless JSON mode)",
                 )
+            self._require_capability("cancel_all", "cancel all")
             return await self._orders.cancel_all()
 
         if cmd == "fills.list":
@@ -424,7 +438,7 @@ class DaemonServer:
             return {
                 "ok": True,
                 "latency_ms": latency_ms,
-                "connected": self._connection.is_connected,
+                "connected": self._provider.is_connected,
                 "halted": self._risk.halted,
             }
 
@@ -459,7 +473,7 @@ class DaemonServer:
         raise _unknown_command_error(cmd)
 
     async def _cmd_daemon_status(self) -> dict[str, Any]:
-        status = self._connection.status()
+        status = self._provider.status()
         return {
             "uptime_seconds": round(time.monotonic() - self._start_monotonic, 3),
             "connection": status.model_dump(mode="json"),
@@ -541,10 +555,10 @@ class DaemonServer:
                         Event(topic=EventTopic.RISK, payload={"event": "halt", "reason": "heartbeat_timeout"})
                     )
 
-            if self._connection.is_connected:
+            if self._provider.is_connected:
                 try:
-                    balance = await self._connection.balance()
-                    pnl = await self._connection.pnl()
+                    balance = await self._provider.balance()
+                    pnl = await self._provider.pnl()
                     nlv = float(balance.net_liquidation or 0.0)
                     breached, loss_pct = self._risk.check_drawdown_breaker(pnl.total, nlv)
                     if breached and not self._risk.halted:

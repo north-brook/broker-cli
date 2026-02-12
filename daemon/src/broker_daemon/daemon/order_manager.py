@@ -7,9 +7,9 @@ from datetime import UTC, datetime
 from typing import Any, Awaitable, Callable
 
 from broker_daemon.audit.logger import AuditLogger
-from broker_daemon.daemon.connection import IBConnectionManager
 from broker_daemon.models.events import Event, EventTopic
 from broker_daemon.models.orders import FillRecord, OrderRecord, OrderRequest, OrderStatus, OrderType
+from broker_daemon.providers import BrokerProvider
 from broker_daemon.risk.engine import RiskContext, RiskEngine
 
 ACTIVE_STATUSES = {
@@ -24,12 +24,12 @@ class OrderManager:
     def __init__(
         self,
         *,
-        connection: IBConnectionManager,
+        provider: BrokerProvider,
         risk: RiskEngine,
         audit: AuditLogger,
         event_cb: Callable[[Event], Awaitable[None]] | None = None,
     ) -> None:
-        self._connection = connection
+        self._provider = provider
         self._risk = risk
         self._audit = audit
         self._event_cb = event_cb
@@ -46,12 +46,12 @@ class OrderManager:
         return OrderType.MARKET
 
     async def _risk_context(self) -> RiskContext:
-        balance = await self._connection.balance()
+        balance = await self._provider.balance()
         nlv = float(balance.net_liquidation or 0.0)
-        positions = await self._connection.positions()
+        positions = await self._provider.positions()
 
         symbols = [p.symbol for p in positions]
-        quotes = await self._connection.quote(symbols) if symbols else []
+        quotes = await self._provider.quote(symbols) if symbols else []
         marks = {
             q.symbol: (q.last if q.last is not None else q.bid if q.bid is not None else q.ask if q.ask is not None else 0.0)
             for q in quotes
@@ -64,7 +64,7 @@ class OrderManager:
                 mark = p.market_price if p.market_price is not None else p.avg_cost
             position_values[p.symbol] = float(mark) * p.qty
 
-        pnl = await self._connection.pnl()
+        pnl = await self._provider.pnl()
         open_orders = len([o for o in self._orders.values() if o.status in ACTIVE_STATUSES])
 
         return RiskContext(
@@ -96,7 +96,7 @@ class OrderManager:
             risk_check_result=risk_result.model_dump(mode="json"),
         )
 
-        broker_res = await self._connection.place_order(request, client_order_id)
+        broker_res = await self._provider.place_order(request, client_order_id)
         record.ib_order_id = broker_res.get("ib_order_id")
         broker_status = str(broker_res.get("status") or "Submitted")
         record.status = _status_from_ib(broker_status)
@@ -133,7 +133,7 @@ class OrderManager:
         self._risk.assert_order(request, context)
 
         client_order_id = str(uuid.uuid4())
-        result = await self._connection.place_bracket(
+        result = await self._provider.place_bracket(
             side=side,
             symbol=symbol,
             qty=qty,
@@ -182,15 +182,15 @@ class OrderManager:
     async def cancel_order(self, order_id: str) -> dict[str, Any]:
         record = self._orders.get(order_id)
         if record:
-            res = await self._connection.cancel_order(client_order_id=order_id, ib_order_id=record.ib_order_id)
+            res = await self._provider.cancel_order(client_order_id=order_id, ib_order_id=record.ib_order_id)
             if res.get("cancelled"):
                 record.status = OrderStatus.CANCELLED
                 await self._audit.upsert_order(record)
             return {"client_order_id": order_id, **res}
-        return await self._connection.cancel_order(client_order_id=order_id)
+        return await self._provider.cancel_order(client_order_id=order_id)
 
     async def cancel_all(self) -> dict[str, Any]:
-        res = await self._connection.cancel_all()
+        res = await self._provider.cancel_all()
         if res.get("cancelled"):
             for record in self._orders.values():
                 if record.status in ACTIVE_STATUSES:
@@ -201,7 +201,7 @@ class OrderManager:
     async def order_status(self, order_id: str) -> dict[str, Any] | None:
         if order_id in self._orders:
             return self._orders[order_id].model_dump(mode="json")
-        trades = await self._connection.trades()
+        trades = await self._provider.trades()
         for trade in trades:
             if trade.get("client_order_id") == order_id:
                 return trade
@@ -217,7 +217,7 @@ class OrderManager:
         return [i for i in items if i["status"].lower() == status_l]
 
     async def list_fills(self, symbol: str | None = None) -> list[dict[str, Any]]:
-        broker_fills = await self._connection.fills()
+        broker_fills = await self._provider.fills()
         for fill in broker_fills:
             await self._audit.log_fill(fill)
         combined = [*self._fills, *broker_fills]

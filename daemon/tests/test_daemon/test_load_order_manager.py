@@ -71,7 +71,7 @@ async def _new_manager(order_rate_limit: int = 500) -> tuple[OrderManager, _Fake
             duplicate_window_seconds=1,
         )
     )
-    manager = OrderManager(connection=conn, risk=risk, audit=_FakeAudit(), event_cb=None)
+    manager = OrderManager(provider=conn, risk=risk, audit=_FakeAudit(), event_cb=None)
     return manager, conn
 
 

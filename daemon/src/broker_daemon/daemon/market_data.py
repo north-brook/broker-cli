@@ -6,13 +6,13 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import AsyncIterator
 
-from broker_daemon.daemon.connection import IBConnectionManager
 from broker_daemon.models.market import Quote
+from broker_daemon.providers import BrokerProvider
 
 
 class MarketDataService:
-    def __init__(self, connection: IBConnectionManager, cache_ttl_seconds: int = 2) -> None:
-        self._connection = connection
+    def __init__(self, provider: BrokerProvider, cache_ttl_seconds: int = 2) -> None:
+        self._provider = provider
         self._cache_ttl = timedelta(seconds=cache_ttl_seconds)
         self._quotes: dict[str, Quote] = {}
         self._updated_at: dict[str, datetime] = {}
@@ -27,7 +27,7 @@ class MarketDataService:
                 uncached.append(sym)
 
         if uncached:
-            fresh = await self._connection.quote(uncached)
+            fresh = await self._provider.quote(uncached)
             for quote in fresh:
                 self._quotes[quote.symbol] = quote
                 self._updated_at[quote.symbol] = now
