@@ -51,6 +51,7 @@ class IBProvider(BrokerProvider):
             "bracket_orders": True,
             "streaming": True,
             "cancel_all": True,
+            "persistent_auth": False,
         }
 
     async def start(self) -> None:

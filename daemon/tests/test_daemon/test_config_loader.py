@@ -71,7 +71,7 @@ def test_load_config_supports_etrade_provider_env(tmp_path: Path, monkeypatch) -
     monkeypatch.setenv("BROKER_ETRADE_SANDBOX", "true")
     monkeypatch.setenv("BROKER_ETRADE_USERNAME", "alice")
     monkeypatch.setenv("BROKER_ETRADE_PASSWORD", "pw-123")
-    monkeypatch.setenv("BROKER_ETRADE_AUTO_REAUTH", "true")
+    monkeypatch.setenv("BROKER_ETRADE_PERSISTENT_AUTH", "true")
 
     broker_json = tmp_path / "config.json"
     broker_json.write_text("{}", encoding="utf-8")
@@ -85,4 +85,4 @@ def test_load_config_supports_etrade_provider_env(tmp_path: Path, monkeypatch) -
     assert cfg.etrade.sandbox is True
     assert cfg.etrade.username == "alice"
     assert cfg.etrade.password == "pw-123"
-    assert cfg.etrade.auto_reauth is True
+    assert cfg.etrade.persistent_auth is True

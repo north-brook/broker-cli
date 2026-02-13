@@ -39,7 +39,7 @@ class ETradeConfig(BaseModel):
     token_path: Path = DEFAULT_CONFIG_HOME / "etrade-tokens.json"
     username: str = ""
     password: str = ""
-    auto_reauth: bool = False
+    persistent_auth: bool = False
 
 
 class RiskConfig(BaseModel):

@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 STEP_TIMEOUT_MS = 30_000
 MANUAL_AUTH_SUGGESTION = "Run `broker auth etrade` to authenticate manually."
-TWO_FACTOR_SUGGESTION = "Auto-reauth cannot handle 2FA; disable 2FA or run `broker auth etrade` manually."
+TWO_FACTOR_SUGGESTION = "Persistent auth cannot handle 2FA; disable 2FA or run `broker auth etrade` manually."
 
 _TWO_FACTOR_TOKENS = (
     "two-factor",
@@ -52,7 +52,7 @@ async def headless_reauth(
     if async_playwright is None:
         raise BrokerError(
             ErrorCode.INVALID_ARGS,
-            "playwright is required for auto-reauth but not installed",
+            "playwright is required for persistent auth but not installed",
             suggestion="Install with: pip install playwright && playwright install chromium",
         )
 
@@ -61,7 +61,7 @@ async def headless_reauth(
     if not user or not secret:
         raise BrokerError(
             ErrorCode.INVALID_ARGS,
-            "E*Trade auto-reauth requires username and password",
+            "E*Trade persistent auth requires username and password",
             suggestion="Set broker.etrade.username and broker.etrade.password in config or env.",
         )
 
@@ -72,7 +72,7 @@ async def headless_reauth(
         save_etrade_tokens,
     )
 
-    logger.info("E*Trade auto-reauth: requesting OAuth request token")
+    logger.info("E*Trade persistent auth: requesting OAuth request token")
     request = await etrade_request_token(
         consumer_key=consumer_key,
         consumer_secret=consumer_secret,
@@ -82,14 +82,14 @@ async def headless_reauth(
     request_token_secret = request["oauth_token_secret"]
     authorize_url = etrade_authorize_url(consumer_key, request_token)
 
-    logger.info("E*Trade auto-reauth: launching headless Chromium")
+    logger.info("E*Trade persistent auth: launching headless Chromium")
     verifier = await _authorize_headless(
         authorize_url=authorize_url,
         username=user,
         password=secret,
     )
 
-    logger.info("E*Trade auto-reauth: exchanging verifier for access token")
+    logger.info("E*Trade persistent auth: exchanging verifier for access token")
     access = await etrade_access_token(
         consumer_key=consumer_key,
         consumer_secret=consumer_secret,
@@ -106,7 +106,7 @@ async def headless_reauth(
         oauth_token=oauth_token,
         oauth_token_secret=oauth_token_secret,
     )
-    logger.info("E*Trade auto-reauth: saved refreshed access token at %s", token_path.expanduser())
+    logger.info("E*Trade persistent auth: saved refreshed access token at %s", token_path.expanduser())
     return oauth_token, oauth_token_secret
 
 
@@ -119,10 +119,10 @@ async def _authorize_headless(*, authorize_url: str, username: str, password: st
             page.set_default_timeout(STEP_TIMEOUT_MS)
 
             try:
-                logger.info("E*Trade auto-reauth: opening authorization URL")
+                logger.info("E*Trade persistent auth: opening authorization URL")
                 await page.goto(authorize_url, wait_until="domcontentloaded", timeout=STEP_TIMEOUT_MS)
 
-                logger.info("E*Trade auto-reauth: submitting login form")
+                logger.info("E*Trade persistent auth: submitting login form")
                 await _fill_first(
                     page,
                     selectors=(
@@ -162,18 +162,18 @@ async def _authorize_headless(*, authorize_url: str, username: str, password: st
 
                 verifier = await _try_extract_verifier(page)
                 if verifier:
-                    logger.info("E*Trade auto-reauth: verifier extracted immediately after login")
+                    logger.info("E*Trade persistent auth: verifier extracted immediately after login")
                     return verifier
 
                 if await _looks_like_two_factor_page(page):
-                    logger.warning("E*Trade auto-reauth: 2FA page detected after login")
+                    logger.warning("E*Trade persistent auth: 2FA page detected after login")
                     raise BrokerError(
                         ErrorCode.IB_REJECTED,
-                        "E*Trade auto-reauth failed: 2FA/MFA challenge detected",
+                        "E*Trade persistent auth failed: 2FA/MFA challenge detected",
                         suggestion=TWO_FACTOR_SUGGESTION,
                     )
 
-                logger.info("E*Trade auto-reauth: accepting authorization prompt")
+                logger.info("E*Trade persistent auth: accepting authorization prompt")
                 await _click_first(
                     page,
                     clickers=(
@@ -187,9 +187,9 @@ async def _authorize_headless(*, authorize_url: str, username: str, password: st
                     label="authorize accept",
                 )
 
-                logger.info("E*Trade auto-reauth: waiting for verifier code")
+                logger.info("E*Trade persistent auth: waiting for verifier code")
                 verifier = await _wait_for_verifier(page)
-                logger.info("E*Trade auto-reauth: verifier code extracted")
+                logger.info("E*Trade persistent auth: verifier code extracted")
                 return verifier
             finally:
                 await context.close()
@@ -199,7 +199,7 @@ async def _authorize_headless(*, authorize_url: str, username: str, password: st
     except Exception as exc:  # pragma: no cover - browser interaction failures are environment-dependent
         raise BrokerError(
             ErrorCode.IB_REJECTED,
-            f"E*Trade auto-reauth failed during browser authorization: {exc}",
+            f"E*Trade persistent auth failed during browser authorization: {exc}",
             suggestion=MANUAL_AUTH_SUGGESTION,
         ) from exc
 
@@ -216,13 +216,13 @@ async def _fill_first(
         try:
             await locator.wait_for(state="visible", timeout=STEP_TIMEOUT_MS)
             await locator.fill(value, timeout=STEP_TIMEOUT_MS)
-            logger.info("E*Trade auto-reauth: filled %s field using selector %s", field_name, selector)
+            logger.info("E*Trade persistent auth: filled %s field using selector %s", field_name, selector)
             return
         except Exception:
             continue
     raise BrokerError(
         ErrorCode.IB_REJECTED,
-        f"E*Trade auto-reauth failed: unable to locate {field_name} field",
+        f"E*Trade persistent auth failed: unable to locate {field_name} field",
         suggestion=MANUAL_AUTH_SUGGESTION,
     )
 
@@ -236,7 +236,7 @@ async def _click_first(
     for click in clickers:
         try:
             await click()
-            logger.info("E*Trade auto-reauth: clicked %s", label)
+            logger.info("E*Trade persistent auth: clicked %s", label)
             return
         except Exception:
             continue
@@ -244,13 +244,13 @@ async def _click_first(
     if await _looks_like_two_factor_page(page):
         raise BrokerError(
             ErrorCode.IB_REJECTED,
-            "E*Trade auto-reauth failed: 2FA/MFA challenge detected",
+            "E*Trade persistent auth failed: 2FA/MFA challenge detected",
             suggestion=TWO_FACTOR_SUGGESTION,
         )
 
     raise BrokerError(
         ErrorCode.IB_REJECTED,
-        f"E*Trade auto-reauth failed: unable to complete {label} step",
+        f"E*Trade persistent auth failed: unable to complete {label} step",
         suggestion=MANUAL_AUTH_SUGGESTION,
     )
 
@@ -265,7 +265,7 @@ async def _wait_for_verifier(page: Any) -> str:
         if await _looks_like_two_factor_page(page):
             raise BrokerError(
                 ErrorCode.IB_REJECTED,
-                "E*Trade auto-reauth failed: 2FA/MFA challenge detected",
+                "E*Trade persistent auth failed: 2FA/MFA challenge detected",
                 suggestion=TWO_FACTOR_SUGGESTION,
             )
 
@@ -273,7 +273,7 @@ async def _wait_for_verifier(page: Any) -> str:
 
     raise BrokerError(
         ErrorCode.IB_REJECTED,
-        "E*Trade auto-reauth failed: could not find verifier code on authorization page",
+        "E*Trade persistent auth failed: could not find verifier code on authorization page",
         suggestion=MANUAL_AUTH_SUGGESTION,
     )
 

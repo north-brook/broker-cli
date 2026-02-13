@@ -191,6 +191,7 @@ class ETradeProvider(BrokerProvider):
             "bracket_orders": False,
             "streaming": False,
             "cancel_all": True,
+            "persistent_auth": True,
         }
 
     async def start(self) -> None:
@@ -199,7 +200,7 @@ class ETradeProvider(BrokerProvider):
         loaded = load_etrade_tokens(self._cfg.token_path)
         if loaded is None:
             logger.info("E*Trade tokens missing at %s", self._cfg.token_path.expanduser())
-            if not await self._attempt_auto_reauth():
+            if not await self._attempt_persistent_auth():
                 raise BrokerError(
                     ErrorCode.IB_DISCONNECTED,
                     f"missing E*Trade OAuth tokens at {self._cfg.token_path.expanduser()}",
@@ -212,7 +213,7 @@ class ETradeProvider(BrokerProvider):
             try:
                 await self._renew_access_token(initial=True)
             except BrokerError as exc:
-                if exc.details.get("auth_expired") and await self._attempt_auto_reauth():
+                if exc.details.get("auth_expired") and await self._attempt_persistent_auth():
                     await self._renew_access_token(initial=True)
                 else:
                     raise
@@ -686,20 +687,20 @@ class ETradeProvider(BrokerProvider):
         await self._close_client()
         self._client = self._build_client()
 
-    def _can_auto_reauth(self) -> bool:
-        if not self._cfg.auto_reauth:
+    def _can_persistent_auth(self) -> bool:
+        if not self._cfg.persistent_auth:
             return False
         if self._cfg.username.strip() and self._cfg.password.strip():
             return True
-        logger.warning("E*Trade auto-reauth enabled but username/password are missing")
+        logger.warning("E*Trade persistent auth enabled but username/password are missing")
         return False
 
-    async def _attempt_auto_reauth(self) -> bool:
+    async def _attempt_persistent_auth(self) -> bool:
         """Try headless re-authentication and refresh in-memory OAuth credentials."""
-        if not self._can_auto_reauth():
+        if not self._can_persistent_auth():
             return False
 
-        logger.info("E*Trade auto-reauth: starting headless re-auth flow")
+        logger.info("E*Trade persistent auth: starting headless re-auth flow")
         try:
             oauth_token, oauth_token_secret = await headless_reauth(
                 consumer_key=self._cfg.consumer_key,
@@ -711,21 +712,21 @@ class ETradeProvider(BrokerProvider):
             )
             await self._set_oauth_tokens(oauth_token, oauth_token_secret)
             self._last_error = None
-            logger.info("E*Trade auto-reauth: completed successfully")
+            logger.info("E*Trade persistent auth: completed successfully")
             return True
         except BrokerError as exc:
             self._token_valid = False
             self._last_error = exc.message
-            logger.warning("E*Trade auto-reauth failed: %s", exc.message)
+            logger.warning("E*Trade persistent auth failed: %s", exc.message)
             return False
         except Exception as exc:  # pragma: no cover - defensive fallback
             self._token_valid = False
-            self._last_error = f"unexpected E*Trade auto-reauth failure: {exc}"
-            logger.exception("unexpected E*Trade auto-reauth failure")
+            self._last_error = f"unexpected E*Trade persistent auth failure: {exc}"
+            logger.exception("unexpected E*Trade persistent auth failure")
             return False
 
     def _should_midnight_reauth(self) -> bool:
-        if not self._cfg.auto_reauth:
+        if not self._cfg.persistent_auth:
             return False
         if not (self._cfg.username.strip() and self._cfg.password.strip()):
             return False
@@ -797,8 +798,8 @@ class ETradeProvider(BrokerProvider):
             await asyncio.sleep(RENEW_LOOP_SLEEP_SECONDS)
 
             if self._should_midnight_reauth():
-                logger.info("E*Trade auto-reauth: midnight ET window detected, refreshing proactively")
-                if await self._attempt_auto_reauth():
+                logger.info("E*Trade persistent auth: midnight ET window detected, refreshing proactively")
+                if await self._attempt_persistent_auth():
                     self._last_midnight_reauth_date = datetime.now(NEW_YORK_TZ).date()
                     next_renew = time.monotonic() + RENEW_INTERVAL_SECONDS
                     continue
@@ -812,7 +813,7 @@ class ETradeProvider(BrokerProvider):
             except BrokerError as exc:
                 self._last_error = exc.message
                 if exc.details.get("auth_expired"):
-                    if await self._attempt_auto_reauth():
+                    if await self._attempt_persistent_auth():
                         next_renew = time.monotonic() + RENEW_INTERVAL_SECONDS
                         continue
                     await self._log_connection("disconnected", {"reason": "token_expired"})

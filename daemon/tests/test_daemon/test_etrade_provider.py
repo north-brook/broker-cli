@@ -18,14 +18,14 @@ def _cfg(tmp_path: Path, **overrides: object) -> ETradeConfig:
         "token_path": tmp_path / "etrade-tokens.json",
         "username": "alice",
         "password": "secret",
-        "auto_reauth": True,
+        "persistent_auth": True,
     }
     base.update(overrides)
     return ETradeConfig.model_validate(base)
 
 
 @pytest.mark.asyncio
-async def test_attempt_auto_reauth_updates_tokens(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+async def test_attempt_persistent_auth_updates_tokens(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     provider = ETradeProvider(_cfg(tmp_path))
     called: dict[str, object] = {}
 
@@ -35,7 +35,7 @@ async def test_attempt_auto_reauth_updates_tokens(monkeypatch: pytest.MonkeyPatc
 
     monkeypatch.setattr(etrade_mod, "headless_reauth", _fake_headless_reauth)
 
-    ok = await provider._attempt_auto_reauth()  # noqa: SLF001
+    ok = await provider._attempt_persistent_auth()  # noqa: SLF001
 
     assert ok is True
     assert provider._oauth_token == "fresh-token"  # noqa: SLF001
@@ -48,7 +48,7 @@ async def test_attempt_auto_reauth_updates_tokens(monkeypatch: pytest.MonkeyPatc
 
 
 @pytest.mark.asyncio
-async def test_attempt_auto_reauth_requires_credentials(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+async def test_attempt_persistent_auth_requires_credentials(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     provider = ETradeProvider(_cfg(tmp_path, username="", password=""))
     invoked = False
 
@@ -59,14 +59,14 @@ async def test_attempt_auto_reauth_requires_credentials(monkeypatch: pytest.Monk
 
     monkeypatch.setattr(etrade_mod, "headless_reauth", _fake_headless_reauth)
 
-    ok = await provider._attempt_auto_reauth()  # noqa: SLF001
+    ok = await provider._attempt_persistent_auth()  # noqa: SLF001
 
     assert ok is False
     assert invoked is False
 
 
 @pytest.mark.asyncio
-async def test_start_uses_auto_reauth_when_tokens_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+async def test_start_uses_persistent_auth_when_tokens_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     provider = ETradeProvider(_cfg(tmp_path))
     monkeypatch.setattr(etrade_mod, "load_etrade_tokens", lambda _path: None)
 
@@ -92,7 +92,7 @@ async def test_start_uses_auto_reauth_when_tokens_missing(monkeypatch: pytest.Mo
     async def _fake_renew_loop() -> None:
         await asyncio.sleep(3600)
 
-    monkeypatch.setattr(provider, "_attempt_auto_reauth", _fake_attempt)  # noqa: SLF001
+    monkeypatch.setattr(provider, "_attempt_persistent_auth", _fake_attempt)  # noqa: SLF001
     monkeypatch.setattr(provider, "_renew_access_token", _fake_renew)  # noqa: SLF001
     monkeypatch.setattr(provider, "_discover_account_id_key", _fake_discover)  # noqa: SLF001
     monkeypatch.setattr(provider, "_log_connection", _fake_log_connection)  # noqa: SLF001
@@ -142,7 +142,7 @@ async def test_start_reauths_when_initial_renew_reports_auth_expired(
     async def _fake_renew_loop() -> None:
         await asyncio.sleep(3600)
 
-    monkeypatch.setattr(provider, "_attempt_auto_reauth", _fake_attempt)  # noqa: SLF001
+    monkeypatch.setattr(provider, "_attempt_persistent_auth", _fake_attempt)  # noqa: SLF001
     monkeypatch.setattr(provider, "_renew_access_token", _fake_renew)  # noqa: SLF001
     monkeypatch.setattr(provider, "_discover_account_id_key", _fake_discover)  # noqa: SLF001
     monkeypatch.setattr(provider, "_log_connection", _fake_log_connection)  # noqa: SLF001
@@ -156,7 +156,7 @@ async def test_start_reauths_when_initial_renew_reports_auth_expired(
 
 
 @pytest.mark.asyncio
-async def test_renew_loop_attempts_auto_reauth_before_disconnect(
+async def test_renew_loop_attempts_persistent_auth_before_disconnect(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -184,7 +184,7 @@ async def test_renew_loop_attempts_auto_reauth_before_disconnect(
         events.append((event, details))
 
     monkeypatch.setattr(provider, "_renew_access_token", _fake_renew)  # noqa: SLF001
-    monkeypatch.setattr(provider, "_attempt_auto_reauth", _fake_attempt)  # noqa: SLF001
+    monkeypatch.setattr(provider, "_attempt_persistent_auth", _fake_attempt)  # noqa: SLF001
     monkeypatch.setattr(provider, "_log_connection", _fake_log_connection)  # noqa: SLF001
     monkeypatch.setattr(provider, "_should_midnight_reauth", lambda: False)  # noqa: SLF001
 

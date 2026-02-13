@@ -189,19 +189,19 @@ run_etrade_onboarding_wizard() {
   done
 
   local username=""
-  read -r -p "E*Trade username (for auto-reauth): " username
+  read -r -p "E*Trade username (for persistent auth): " username
   username="$(printf '%s' "${username}" | xargs)"
 
   local password=""
-  read_secret_input "E*Trade password (for auto-reauth): " password
+  read_secret_input "E*Trade password (for persistent auth): " password
 
-  local auto_reauth="false"
+  local persistent_auth="false"
   if [[ -n "${username}" && -n "${password}" ]]; then
     while true; do
       local auto_input=""
       read -r -p "Enable automatic re-authentication? [y/N]: " auto_input
-      auto_reauth="$(parse_yes_no_default_no "${auto_input}" || true)"
-      if [[ -n "${auto_reauth}" ]]; then
+      persistent_auth="$(parse_yes_no_default_no "${auto_input}" || true)"
+      if [[ -n "${persistent_auth}" ]]; then
         break
       fi
       echo "Please answer yes or no."
@@ -223,7 +223,7 @@ run_etrade_onboarding_wizard() {
   BROKER_ETRADE_CONSUMER_SECRET="${consumer_secret}" \
   BROKER_ETRADE_USERNAME="${username}" \
   BROKER_ETRADE_PASSWORD="${password}" \
-  BROKER_ETRADE_AUTO_REAUTH="${auto_reauth}" \
+  BROKER_ETRADE_PERSISTENT_AUTH="${persistent_auth}" \
   BROKER_ETRADE_SANDBOX="${sandbox}" \
   python3 - "${BROKER_CONFIG_JSON}" <<'PY'
 import json
@@ -268,7 +268,7 @@ etrade_cfg["consumer_key"] = as_non_empty_str(os.environ.get("BROKER_ETRADE_CONS
 etrade_cfg["consumer_secret"] = as_non_empty_str(os.environ.get("BROKER_ETRADE_CONSUMER_SECRET", ""))
 etrade_cfg["username"] = as_non_empty_str(os.environ.get("BROKER_ETRADE_USERNAME", ""))
 etrade_cfg["password"] = os.environ.get("BROKER_ETRADE_PASSWORD", "")
-etrade_cfg["auto_reauth"] = as_bool(os.environ.get("BROKER_ETRADE_AUTO_REAUTH", "false"))
+etrade_cfg["persistent_auth"] = as_bool(os.environ.get("BROKER_ETRADE_PERSISTENT_AUTH", "false"))
 etrade_cfg["sandbox"] = as_bool(os.environ.get("BROKER_ETRADE_SANDBOX", "false"))
 
 broker_cfg["provider"] = "etrade"
@@ -280,7 +280,7 @@ os.chmod(config_path, 0o600)
 PY
 
   if [[ -z "${username}" || -z "${password}" ]]; then
-    echo "Auto-reauth requires E*Trade username and password."
+    echo "Persistent auth requires E*Trade username and password."
     echo "You can add them later in ~/.config/broker/config.json"
   fi
 }

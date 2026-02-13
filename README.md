@@ -81,7 +81,7 @@ To keep E*Trade authenticated across the daily midnight token expiry:
          "consumer_secret": "...",
          "username": "your_etrade_username",
          "password": "your_etrade_password",
-         "auto_reauth": true
+         "persistent_auth": true
        }
      }
    }
@@ -90,11 +90,11 @@ To keep E*Trade authenticated across the daily midnight token expiry:
    ```bash
    export BROKER_ETRADE_USERNAME=your_username
    export BROKER_ETRADE_PASSWORD=your_password
-   export BROKER_ETRADE_AUTO_REAUTH=true
+   export BROKER_ETRADE_PERSISTENT_AUTH=true
    ```
-3. The daemon will auto re-authenticate around midnight ET and when access tokens expire.
+3. The daemon will refresh persistent auth around midnight ET and when access tokens expire.
 
-Note: accounts with 2FA/MFA enabled cannot use auto-reauth. Use `broker auth etrade` for manual authentication.
+Note: accounts with 2FA/MFA enabled cannot use persistent auth. Use `broker auth etrade` for manual authentication.
 
 ## Storage Defaults
 

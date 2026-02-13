@@ -34,6 +34,7 @@ class BrokerProvider(ABC):
             "bracket_orders": False,
             "streaming": False,
             "cancel_all": False,
+            "persistent_auth": False,
         }
 
     @abstractmethod
