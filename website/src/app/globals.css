@@ -1,0 +1,27 @@
+@import "tailwindcss";
+
+:root {
+  --background: #0a0a0a;
+  --foreground: #e5e5e5;
+  --accent: #22c55e;
+  --accent-dim: #16a34a;
+  --muted: #737373;
+  --border: #262626;
+  --card: #141414;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+code, .font-mono {
+  font-family: "SF Mono", "Fira Code", "JetBrains Mono", ui-monospace, monospace;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--background);
+}

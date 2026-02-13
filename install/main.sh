@@ -17,7 +17,7 @@ BROKER_CONFIG_JSON="${BROKER_CONFIG_JSON:-${BROKER_CONFIG_HOME}/config.json}"
 BROKER_STATE_HOME="${XDG_STATE_HOME:-${HOME}/.local/state}/broker"
 BROKER_DATA_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/broker"
 BROKER_SOURCE_DIR="${BROKER_SOURCE_DIR:-${BROKER_DATA_HOME}/source}"
-BROKER_REPO="${BROKER_REPO:-https://github.com/north-brook/broker.git}"
+BROKER_REPO="${BROKER_REPO:-https://github.com/north-brook/broker-cli.git}"
 ORIG_ARGS=("$@")
 ORIG_ARGC=$#
 
