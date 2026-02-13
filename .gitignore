@@ -13,6 +13,11 @@ __pycache__/
 .venv/
 .env
 
+# Website
+website/.next/
+website/node_modules/
+website/.vercel
+
 # AI
 .claude/
 .vercel
