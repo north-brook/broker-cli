@@ -32,10 +32,11 @@ IBC_INSTALL_DIR="${BROKER_IBC_INSTALL_DIR:-${BROKER_DATA_HOME}/ibc}"
 BROKER_BIN_DIR="${BROKER_BIN_DIR:-${HOME}/.local/bin}"
 LOG_DIR="$(mktemp -d /tmp/broker-install.XXXXXX)"
 STEP_INDEX=0
-STEP_TOTAL=10
+STEP_TOTAL=0
 INTERACTIVE=0
 SKIP_ONBOARDING=0
 ONBOARDING_ONLY=0
+SELECTED_PROVIDER="ib"
 
 export BROKER_CONFIG_HOME BROKER_CONFIG_JSON BROKER_STATE_HOME BROKER_DATA_HOME
 export BROKER_SOURCE_DIR BROKER_REPO IBC_RELEASE_TAG IBC_INSTALL_DIR
@@ -58,10 +59,6 @@ for arg in "$@"; do
       ;;
   esac
 done
-
-if [[ "${SKIP_ONBOARDING}" -eq 0 ]]; then
-  STEP_TOTAL=$((STEP_TOTAL + 1))
-fi
 
 if [[ -t 1 ]]; then
   INTERACTIVE=1
@@ -96,13 +93,80 @@ if [[ ! -d "${ROOT_DIR}/daemon" || ! -d "${ROOT_DIR}/cli" || ! -d "${ROOT_DIR}/s
   ensure_source_checkout
 fi
 
+normalize_selected_provider() {
+  case "$(printf '%s' "${SELECTED_PROVIDER}" | tr '[:upper:]' '[:lower:]')" in
+    ib|etrade) ;;
+    *) SELECTED_PROVIDER="ib" ;;
+  esac
+}
+
+recalculate_step_total() {
+  local total=0
+
+  if [[ "${ONBOARDING_ONLY}" -eq 1 ]]; then
+    total=2
+    if [[ "${SELECTED_PROVIDER}" == "ib" ]]; then
+      total=$((total + 1))
+    else
+      total=$((total + 2))
+    fi
+    STEP_TOTAL="${total}"
+    return 0
+  fi
+
+  total=7
+  if [[ "${SELECTED_PROVIDER}" == "ib" ]]; then
+    total=$((total + 3))
+    if [[ "${SKIP_ONBOARDING}" -eq 0 ]]; then
+      total=$((total + 1))
+    fi
+  else
+    total=$((total + 1))
+    if [[ "${SKIP_ONBOARDING}" -eq 0 ]]; then
+      total=$((total + 2))
+    fi
+  fi
+
+  STEP_TOTAL="${total}"
+}
+
+run_provider_selection_step() {
+  local label="Select broker provider"
+
+  if [[ "${INTERACTIVE}" -eq 1 ]]; then
+    printf "  ${BLUE}•${RESET} %s\n" "${label}"
+  else
+    printf "%s\n" "${label}"
+  fi
+
+  select_broker_provider
+
+  if [[ "${INTERACTIVE}" -eq 1 ]]; then
+    printf "  ${GREEN}✔${RESET} %s\n" "${label}"
+  else
+    success "  ${label}"
+  fi
+}
+
+SELECTED_PROVIDER="$(read_configured_provider || true)"
+normalize_selected_provider
+recalculate_step_total
+
 if [[ "${ONBOARDING_ONLY}" -eq 1 ]]; then
   STEP_INDEX=0
-  STEP_TOTAL=3
+  recalculate_step_total
   banner
   run_step "Preparing broker directories" prepare_broker_home
   run_step "Creating broker config (${BROKER_CONFIG_JSON})" ensure_broker_config
-  run_step_interactive "Interactive Brokers credential setup" run_onboarding_wizard
+  run_provider_selection_step
+  normalize_selected_provider
+  recalculate_step_total
+  if [[ "${SELECTED_PROVIDER}" == "ib" ]]; then
+    run_step_interactive "Interactive Brokers credential setup" run_onboarding_wizard
+  else
+    run_step_interactive "E*Trade credential setup" run_etrade_onboarding_wizard
+    run_step_interactive "E*Trade OAuth authentication" run_etrade_oauth_flow
+  fi
   rm -rf "${LOG_DIR}"
   print_summary
   exit 0
@@ -112,16 +176,31 @@ banner
 run_step "Preparing broker config/state/data directories" prepare_broker_home
 run_step "Bootstrapping system tooling (Homebrew, uv)" bootstrap_tooling
 run_step "Creating broker config (${BROKER_CONFIG_JSON})" ensure_broker_config
-run_step "Interactive Brokers Gateway setup" install_ib_app
-run_step "Installing IBC automation package" install_ibc
+run_provider_selection_step
+normalize_selected_provider
+recalculate_step_total
+if [[ "${SELECTED_PROVIDER}" == "ib" ]]; then
+  run_step "Interactive Brokers Gateway setup" install_ib_app
+  run_step "Installing IBC automation package" install_ibc
+fi
 run_step "Creating Python runtime" create_python_runtime
 run_step "Installing broker Python packages" install_python_packages
+if [[ "${SELECTED_PROVIDER}" == "etrade" ]]; then
+  run_step "Installing E*Trade dependencies" install_etrade_dependencies
+fi
 run_step_interactive "Binding broker CLI command" bind_broker_command
 run_step "Installing shell completions" install_shell_completions
 if [[ "${SKIP_ONBOARDING}" -eq 0 ]]; then
-  run_step_interactive "Interactive Brokers credential setup" run_onboarding_wizard
+  if [[ "${SELECTED_PROVIDER}" == "ib" ]]; then
+    run_step_interactive "Interactive Brokers credential setup" run_onboarding_wizard
+  else
+    run_step_interactive "E*Trade credential setup" run_etrade_onboarding_wizard
+    run_step_interactive "E*Trade OAuth authentication" run_etrade_oauth_flow
+  fi
 fi
-run_step "Launching Interactive Brokers Gateway" launch_ib_gateway_app
+if [[ "${SELECTED_PROVIDER}" == "ib" ]]; then
+  run_step "Launching Interactive Brokers Gateway" launch_ib_gateway_app
+fi
 
 rm -rf "${LOG_DIR}"
 print_summary

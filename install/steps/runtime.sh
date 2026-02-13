@@ -10,6 +10,12 @@ install_python_packages() {
   .venv/bin/python -m pip install -e './daemon' -e './sdk/python' -e './cli'
 }
 
+install_etrade_dependencies() {
+  cd "${ROOT_DIR}"
+  .venv/bin/python -m pip install playwright authlib httpx
+  .venv/bin/python -m playwright install chromium
+}
+
 install_shell_completions() {
   local generator="${ROOT_DIR}/scripts/generate-completions.sh"
   if [[ ! -x "${generator}" ]]; then

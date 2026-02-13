@@ -1,6 +1,6 @@
 # Broker
 
-Broker is an Interactive Brokers execution stack with a local daemon, CLI, and SDKs.
+Broker is a multi-provider execution stack with a local daemon, CLI, and SDKs.
 
 ## Quickstart
 
@@ -15,6 +15,17 @@ If you already have the repo cloned locally:
 ```bash
 ./install.sh
 ```
+
+The installer prompts you to choose a broker provider:
+
+```text
+Select your broker provider:
+  1) Interactive Brokers (IBKR)
+  2) E*Trade
+Provider [1]:
+```
+
+`1` (IBKR) is the default. In non-interactive installs, IBKR is selected automatically.
 
 After install:
 
@@ -45,7 +56,8 @@ Add new providers as additional columns in this table.
 
 ## E*Trade Setup
 
-Authenticate once manually to create the initial token file:
+If you select E*Trade during install, the installer will prompt for E*Trade OAuth setup and run `broker auth etrade`.
+If you skip that step, run manual auth anytime:
 
 ```bash
 broker auth etrade
