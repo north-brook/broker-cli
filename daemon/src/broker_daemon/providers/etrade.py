@@ -21,7 +21,7 @@ from broker_daemon.exceptions import ErrorCode, BrokerError
 from broker_daemon.models.events import Event, EventTopic
 from broker_daemon.models.market import OptionChain, OptionChainEntry, Quote
 from broker_daemon.models.orders import FillRecord, OrderRequest
-from broker_daemon.models.portfolio import Balance, PnLSummary, Position
+from broker_daemon.models.portfolio import Balance, ExposureEntry, PnLSummary, Position
 from broker_daemon.providers.base import BrokerProvider, ConnectionStatus
 from broker_daemon.providers.etrade_reauth import headless_reauth
 
@@ -34,6 +34,7 @@ MIDNIGHT_REAUTH_WINDOW_MINUTES = 5
 MIN_REQUEST_GAP_SECONDS = 0.2
 QUOTE_BATCH_SIZE = 25
 NEW_YORK_TZ = ZoneInfo("America/New_York")
+VALID_EXPOSURE_GROUPS = {"symbol", "currency", "sector", "asset_class"}
 
 
 def etrade_api_base(sandbox: bool) -> str:
@@ -186,7 +187,7 @@ class ETradeProvider(BrokerProvider):
         return {
             "history": False,
             "option_chain": True,
-            "exposure": False,
+            "exposure": True,
             "bracket_orders": False,
             "streaming": False,
             "cancel_all": False,
@@ -472,6 +473,37 @@ class ETradeProvider(BrokerProvider):
         unrealized = sum(float(row.unrealized_pnl or 0.0) for row in positions)
         realized = 0.0
         return PnLSummary(realized=realized, unrealized=unrealized, total=realized + unrealized)
+
+    async def exposure(self, by: str) -> list[ExposureEntry]:
+        if by not in VALID_EXPOSURE_GROUPS:
+            allowed = ", ".join(sorted(VALID_EXPOSURE_GROUPS))
+            raise BrokerError(
+                ErrorCode.INVALID_ARGS,
+                f"unsupported exposure group '{by}'",
+                details={"allowed": sorted(VALID_EXPOSURE_GROUPS)},
+                suggestion=f"Use one of: {allowed}",
+            )
+
+        positions = await self.positions()
+        balance = await self.balance()
+        nlv = float(balance.net_liquidation or 0.0)
+        if nlv <= 0:
+            nlv = sum(abs(p.market_value or 0.0) for p in positions) or 1.0
+
+        buckets: dict[str, float] = {}
+        for pos in positions:
+            if by == "symbol":
+                key = pos.symbol
+            elif by == "currency":
+                key = pos.currency
+            else:
+                key = "portfolio"
+            buckets[key] = buckets.get(key, 0.0) + abs(pos.market_value or pos.avg_cost * pos.qty)
+
+        return [
+            ExposureEntry(key=key, exposure_value=value, exposure_pct=(value / nlv) * 100.0)
+            for key, value in sorted(buckets.items())
+        ]
 
     async def place_order(self, order: OrderRequest, client_order_id: str) -> dict[str, Any]:
         account_id_key = await self._require_account_id_key()
