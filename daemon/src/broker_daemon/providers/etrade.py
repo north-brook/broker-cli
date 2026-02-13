@@ -190,7 +190,7 @@ class ETradeProvider(BrokerProvider):
             "exposure": True,
             "bracket_orders": False,
             "streaming": False,
-            "cancel_all": False,
+            "cancel_all": True,
         }
 
     async def start(self) -> None:
@@ -563,6 +563,55 @@ class ETradeProvider(BrokerProvider):
         )
         cancelled = _extract_cancelled(response)
         return {"cancelled": cancelled, "ib_order_id": _as_int(order_id)}
+
+    async def cancel_all(self) -> dict[str, Any]:
+        account_id_key = await self._require_account_id_key()
+        open_order_ids: list[str] = []
+        for row in await self._list_orders_raw():
+            parsed = _parse_order_row(row)
+            order_id = parsed["order_id"]
+            if not order_id:
+                continue
+            if not _is_open_order_status(str(parsed["status"])):
+                continue
+            open_order_ids.append(str(order_id))
+
+        if not open_order_ids:
+            return {
+                "cancelled": False,
+                "requested": 0,
+                "cancelled_count": 0,
+                "failed": [],
+            }
+
+        cancelled_ids: list[int] = []
+        failed: list[dict[str, Any]] = []
+        for order_id in open_order_ids:
+            try:
+                response = await self._request_json(
+                    "PUT",
+                    f"/v1/accounts/{account_id_key}/orders/cancel",
+                    json_body={"CancelOrderRequest": {"orderId": order_id}},
+                    operation="cancel_order",
+                )
+            except BrokerError as exc:
+                failed.append({"order_id": _as_int(order_id), "error": exc.message})
+                continue
+
+            if _extract_cancelled(response):
+                parsed_id = _as_int(order_id)
+                if parsed_id is not None:
+                    cancelled_ids.append(parsed_id)
+            else:
+                failed.append({"order_id": _as_int(order_id), "error": "cancel rejected"})
+
+        return {
+            "cancelled": len(failed) == 0 and len(cancelled_ids) > 0,
+            "requested": len(open_order_ids),
+            "cancelled_count": len(cancelled_ids),
+            "cancelled_order_ids": cancelled_ids,
+            "failed": failed,
+        }
 
     async def trades(self) -> list[dict[str, Any]]:
         raw_orders = await self._list_orders_raw()
@@ -1178,6 +1227,22 @@ def _option_chain_type(option_type: str | None) -> str:
         f"unsupported option type '{option_type}'",
         suggestion="Use option_type call or put.",
     )
+
+
+def _is_open_order_status(value: str) -> bool:
+    normalized = str(value or "").strip().upper()
+    if normalized in {
+        "OPEN",
+        "WORKING",
+        "ACKNOWLEDGED",
+        "PENDING",
+        "PENDING_SUBMIT",
+        "PENDING CANCEL",
+        "PENDING_CANCEL",
+        "LIVE",
+    }:
+        return True
+    return _normalize_order_status(normalized) in {"Submitted", "Acknowledged", "PendingSubmit", "PreSubmitted"}
 
 
 def _first_float(*values: Any) -> float | None:
