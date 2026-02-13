@@ -15,6 +15,7 @@ body {
   color: var(--foreground);
   font-family: system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
 }
 
 code, .font-mono {

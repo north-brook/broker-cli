@@ -276,14 +276,15 @@ export default function Home() {
 
       {/* Paper trading */}
       <section className="mb-24">
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-sm">
+        <div className="flex flex-wrap items-center gap-3 text-sm">
           <span className="text-lg">🧪</span>
           <span className="font-semibold">Start safe:</span>
-          <code className="text-[var(--accent)] bg-[var(--card)] border border-[var(--border)] px-2 py-1 rounded font-mono text-xs sm:text-sm">
+          <code className="text-[var(--accent)] bg-[var(--card)] border border-[var(--border)] px-2 py-1 rounded font-mono">
             broker daemon start --paper
           </code>
           <span className="text-[var(--muted)]">
-            — paper trading mode. Test strategies risk-free.
+            — full paper trading mode. Test strategies with zero risk, go live
+            when ready.
           </span>
         </div>
       </section>
