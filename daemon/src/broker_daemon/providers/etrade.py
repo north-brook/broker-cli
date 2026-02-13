@@ -19,7 +19,7 @@ from broker_daemon.audit.logger import AuditLogger
 from broker_daemon.config import ETradeConfig
 from broker_daemon.exceptions import ErrorCode, BrokerError
 from broker_daemon.models.events import Event, EventTopic
-from broker_daemon.models.market import Quote
+from broker_daemon.models.market import OptionChain, OptionChainEntry, Quote
 from broker_daemon.models.orders import FillRecord, OrderRequest
 from broker_daemon.models.portfolio import Balance, PnLSummary, Position
 from broker_daemon.providers.base import BrokerProvider, ConnectionStatus
@@ -185,7 +185,7 @@ class ETradeProvider(BrokerProvider):
     def capabilities(self) -> dict[str, bool]:
         return {
             "history": False,
-            "option_chain": False,
+            "option_chain": True,
             "exposure": False,
             "bracket_orders": False,
             "streaming": False,
@@ -299,6 +299,99 @@ class ETradeProvider(BrokerProvider):
                     )
                 )
         return out
+
+    async def option_chain(
+        self,
+        symbol: str,
+        expiry_prefix: str | None,
+        strike_range: tuple[float, float] | None,
+        option_type: str | None,
+    ) -> OptionChain:
+        symbol_upper = symbol.upper().strip()
+        if not symbol_upper:
+            raise BrokerError(ErrorCode.INVALID_ARGS, "symbol is required")
+
+        params: dict[str, Any] = {
+            "symbol": symbol_upper,
+            "optionCategory": "STANDARD",
+            "chainType": _option_chain_type(option_type),
+            "includeWeekly": "true",
+            "skipAdjusted": "true",
+        }
+
+        expiry = _parse_expiry_prefix(expiry_prefix)
+        if expiry is not None:
+            year, month, day = expiry
+            params["expiryYear"] = year
+            if month is not None:
+                params["expiryMonth"] = month
+            if day is not None:
+                params["expiryDay"] = day
+
+        if strike_range is not None:
+            params["strikeRange"] = f"{strike_range[0]}:{strike_range[1]}"
+
+        payload = await self._request_json(
+            "GET",
+            "/v1/market/optionchains",
+            params=params,
+            operation="option_chain",
+        )
+        option_pairs = _extract_option_pairs(payload)
+        if not option_pairs:
+            underlying = _extract_underlying_price(payload)
+            if underlying is None:
+                quotes = await self.quote([symbol_upper])
+                if quotes:
+                    first = quotes[0]
+                    underlying = first.last if first.last is not None else first.bid if first.bid is not None else first.ask
+            return OptionChain(symbol=symbol_upper, underlying_price=underlying, entries=[])
+
+        body = payload.get("OptionChainResponse")
+        if not isinstance(body, dict):
+            body = {}
+
+        entries: list[OptionChainEntry] = []
+        wants_call = option_type in {None, "call"}
+        wants_put = option_type in {None, "put"}
+
+        for pair in option_pairs:
+            if wants_call:
+                call = pair.get("Call")
+                if isinstance(call, dict):
+                    entry = _build_option_chain_entry(symbol=symbol_upper, right="C", leg=call, pair=pair, body=body)
+                    if entry is not None:
+                        entries.append(entry)
+
+            if wants_put:
+                put = pair.get("Put")
+                if isinstance(put, dict):
+                    entry = _build_option_chain_entry(symbol=symbol_upper, right="P", leg=put, pair=pair, body=body)
+                    if entry is not None:
+                        entries.append(entry)
+
+        underlying = _extract_underlying_price(payload)
+        if underlying is None:
+            quotes = await self.quote([symbol_upper])
+            if quotes:
+                first = quotes[0]
+                underlying = first.last if first.last is not None else first.bid if first.bid is not None else first.ask
+
+        if expiry_prefix:
+            normalized_prefix = _normalized_expiry_prefix(expiry_prefix)
+            if normalized_prefix:
+                entries = [entry for entry in entries if entry.expiry.replace("-", "").startswith(normalized_prefix)]
+
+        if strike_range is not None:
+            lo, hi = strike_range
+            min_strike = lo
+            max_strike = hi
+            if underlying is not None:
+                min_strike = underlying * lo
+                max_strike = underlying * hi
+            entries = [entry for entry in entries if min_strike <= entry.strike <= max_strike]
+
+        return OptionChain(symbol=symbol_upper, underlying_price=underlying, entries=entries)
 
     async def positions(self) -> list[Position]:
         account_id_key = await self._require_account_id_key()
@@ -844,6 +937,14 @@ def _extract_quote_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return [row for row in _as_list(rows) if isinstance(row, dict)]
 
 
+def _extract_option_pairs(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    response = payload.get("OptionChainResponse")
+    if not isinstance(response, dict):
+        return []
+    rows = response.get("OptionPair")
+    return [row for row in _as_list(rows) if isinstance(row, dict)]
+
+
 def _extract_accounts(payload: dict[str, Any]) -> list[dict[str, Any]]:
     response = payload.get("AccountListResponse")
     if not isinstance(response, dict):
@@ -866,6 +967,193 @@ def _extract_position_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
             if isinstance(row, dict):
                 rows.append(row)
     return rows
+
+
+def _build_option_chain_entry(
+    *,
+    symbol: str,
+    right: str,
+    leg: dict[str, Any],
+    pair: dict[str, Any],
+    body: dict[str, Any],
+) -> OptionChainEntry | None:
+    strike = _extract_option_strike(leg, pair)
+    expiry = _extract_option_expiry(leg=leg, pair=pair, body=body)
+    if strike is None or not expiry:
+        return None
+
+    greeks = leg.get("OptionGreeks")
+    if not isinstance(greeks, dict):
+        greeks = {}
+
+    return OptionChainEntry(
+        symbol=symbol,
+        right=right,
+        strike=strike,
+        expiry=expiry,
+        bid=_as_float(leg.get("bid")),
+        ask=_as_float(leg.get("ask")),
+        implied_vol=_first_float(
+            greeks.get("iv"),
+            leg.get("impliedVolatility"),
+            leg.get("impliedVol"),
+            leg.get("iv"),
+        ),
+        delta=_first_float(greeks.get("delta"), leg.get("delta")),
+        gamma=_first_float(greeks.get("gamma"), leg.get("gamma")),
+        theta=_first_float(greeks.get("theta"), leg.get("theta")),
+        vega=_first_float(greeks.get("vega"), leg.get("vega")),
+    )
+
+
+def _extract_option_strike(leg: dict[str, Any], pair: dict[str, Any]) -> float | None:
+    for value in (
+        leg.get("strikePrice"),
+        leg.get("strike"),
+        pair.get("strikePrice"),
+        pair.get("strike"),
+    ):
+        if isinstance(value, dict):
+            parsed = _first_float(value.get("value"), value.get("amount"), value.get("displayValue"), value.get("strike"))
+            if parsed is not None:
+                return parsed
+            continue
+        parsed = _as_float(value)
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _extract_option_expiry(*, leg: dict[str, Any], pair: dict[str, Any], body: dict[str, Any]) -> str | None:
+    for source in (leg, pair, body):
+        parsed = _extract_expiry_from_dict(source)
+        if parsed:
+            return parsed
+    return None
+
+
+def _extract_expiry_from_dict(value: Any) -> str | None:
+    if not isinstance(value, dict):
+        return None
+
+    direct = _format_expiry(value.get("year"), value.get("month"), value.get("day"))
+    if direct:
+        return direct
+
+    for fields in (
+        ("expiryYear", "expiryMonth", "expiryDay"),
+        ("expirationYear", "expirationMonth", "expirationDay"),
+        ("expireYear", "expireMonth", "expireDay"),
+    ):
+        parsed = _format_expiry(value.get(fields[0]), value.get(fields[1]), value.get(fields[2]))
+        if parsed:
+            return parsed
+
+    for key in ("selectedED", "SelectedED", "expiryDate", "expirationDate", "expireDate"):
+        parsed = _extract_expiry_from_dict(value.get(key))
+        if parsed:
+            return parsed
+
+    return None
+
+
+def _extract_underlying_price(payload: dict[str, Any]) -> float | None:
+    body = payload.get("OptionChainResponse")
+    if not isinstance(body, dict):
+        return None
+
+    for key in ("underlierPrice", "underlyingPrice", "underlier", "nearPrice", "lastPrice", "lastTrade"):
+        parsed = _as_float(body.get(key))
+        if parsed is not None:
+            return parsed
+
+    quote_data = body.get("QuoteData")
+    quote_rows = [row for row in _as_list(quote_data) if isinstance(row, dict)]
+    for row in quote_rows:
+        all_data = row.get("All")
+        if not isinstance(all_data, dict):
+            continue
+        parsed = _first_float(all_data.get("lastTrade"), all_data.get("bid"), all_data.get("ask"))
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _format_expiry(year: Any, month: Any, day: Any) -> str | None:
+    parsed_year = _as_int(year)
+    parsed_month = _as_int(month)
+    parsed_day = _as_int(day)
+    if parsed_year is None or parsed_month is None or parsed_day is None:
+        return None
+    if parsed_month < 1 or parsed_month > 12:
+        return None
+    if parsed_day < 1 or parsed_day > 31:
+        return None
+    return f"{parsed_year:04d}-{parsed_month:02d}-{parsed_day:02d}"
+
+
+def _parse_expiry_prefix(value: str | None) -> tuple[int, int | None, int | None] | None:
+    normalized = _normalized_expiry_prefix(value)
+    if not normalized:
+        return None
+    if len(normalized) not in {4, 6, 8}:
+        raise BrokerError(
+            ErrorCode.INVALID_ARGS,
+            f"invalid expiry '{value}'",
+            suggestion="Use expiry like YYYY, YYYY-MM, or YYYY-MM-DD.",
+        )
+
+    year = _as_int(normalized[:4])
+    month = _as_int(normalized[4:6]) if len(normalized) >= 6 else None
+    day = _as_int(normalized[6:8]) if len(normalized) == 8 else None
+    if year is None:
+        raise BrokerError(
+            ErrorCode.INVALID_ARGS,
+            f"invalid expiry '{value}'",
+            suggestion="Use expiry like YYYY, YYYY-MM, or YYYY-MM-DD.",
+        )
+    if month is not None and (month < 1 or month > 12):
+        raise BrokerError(
+            ErrorCode.INVALID_ARGS,
+            f"invalid expiry month in '{value}'",
+            suggestion="Use expiry like YYYY-MM with month 01-12.",
+        )
+    if day is not None and (day < 1 or day > 31):
+        raise BrokerError(
+            ErrorCode.INVALID_ARGS,
+            f"invalid expiry day in '{value}'",
+            suggestion="Use expiry like YYYY-MM-DD with day 01-31.",
+        )
+    return year, month, day
+
+
+def _normalized_expiry_prefix(value: str | None) -> str:
+    if value is None:
+        return ""
+    return "".join(ch for ch in str(value).strip() if ch.isdigit())
+
+
+def _option_chain_type(option_type: str | None) -> str:
+    if option_type is None:
+        return "CALLPUT"
+    normalized = str(option_type).strip().lower()
+    if normalized == "call":
+        return "CALL"
+    if normalized == "put":
+        return "PUT"
+    raise BrokerError(
+        ErrorCode.INVALID_ARGS,
+        f"unsupported option type '{option_type}'",
+        suggestion="Use option_type call or put.",
+    )
+
+
+def _first_float(*values: Any) -> float | None:
+    for value in values:
+        parsed = _as_float(value)
+        if parsed is not None:
+            return parsed
+    return None
 
 
 def _extract_orders(payload: dict[str, Any]) -> list[dict[str, Any]]:
