@@ -1,130 +1,151 @@
-# Broker
+# broker-cli
 
-Broker is a multi-provider execution stack with a local daemon, CLI, and SDKs.
+Give your AI agent a brokerage account.
 
-## Quickstart
+Broker APIs exist. SDKs exist. But AI agents use the command line. **broker-cli** turns any brokerage into shell commands your agent already understands, with a `SKILL.md` that teaches it everything.
 
-Install using the hosted bootstrap script:
+📖 **[brokercli.com](https://brokercli.com)** · 📚 **[Reference](https://brokercli.com/reference)**
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/north-brook/broker-cli/main/install/bootstrap.sh | bash
-```
-
-If you already have the repo cloned locally:
+## Install
 
 ```bash
-./install.sh
+curl -fsSL https://brokercli.com/install | bash
 ```
 
-The installer prompts you to choose a broker provider:
-
-```text
-Select your broker provider:
-  1) Interactive Brokers (IBKR)
-  2) E*Trade
-Provider [1]:
-```
-
-`1` (IBKR) is the default. In non-interactive installs, IBKR is selected automatically.
-
-After install:
+Or via pip:
 
 ```bash
-broker --help
-broker daemon start --paper
-broker daemon status
+pip install broker-cli
 ```
 
-## Supported Providers
+## Quick Start
 
-Add new providers as additional columns in this table.
+```bash
+broker daemon start --paper   # Start in paper trading mode
+broker daemon status           # Check connection
+broker quote AAPL MSFT         # Get quotes
+broker positions               # View portfolio
+broker exposure --by symbol    # Exposure analysis
+broker order buy AAPL 100 --limit 185   # Place an order
+```
 
-| Feature | Interactive Brokers | E*Trade |
-|---------|:------------------:|:-------:|
+## Built for Agents
+
+- **SKILL.md Included** — Ships with a skill file that Codex, Claude Code, and OpenClaw agents read automatically. Your agent knows every command, flag, and workflow without extra prompting.
+- **CLI-First, Agent-Ready** — Every action is a shell command. Agents don't need SDKs, API keys, or custom integrations — just bash.
+- **Autonomous Execution** — Persistent auth keeps sessions alive 24/7. No manual logins, no token expiry interruptions.
+- **Multi-Broker** — Unified commands across E\*Trade and Interactive Brokers. One skill file, one interface.
+- **Full Options Support** — Option chains with greeks, expiry filtering, and strike ranges.
+- **Risk Guardrails** — Exposure analysis, cancel-all for instant flattening, paper trading mode. Power with built-in safety valves.
+
+## Supported Brokers
+
+| Feature | Interactive Brokers | E\*Trade |
+|---|:---:|:---:|
 | Real-time quotes | ✅ | ✅ |
-| Historical bars | ✅ | ❌ |
-| Option chains | ✅ | ❌ |
-| Market orders | ✅ | ✅ |
-| Limit orders | ✅ | ✅ |
-| Stop orders | ✅ | ✅ |
-| Bracket orders | ✅ | ❌ |
-| Cancel all | ✅ | ❌ |
-| Positions | ✅ | ✅ |
-| Balance / P&L | ✅ | ✅ |
-| Streaming events | ✅ | ❌ |
-| Risk engine | ✅ | ✅ |
+| Option chains + greeks | ✅ | ✅ |
+| All order types | ✅ | ✅ |
+| Cancel all | ✅ | ✅ |
+| Positions & P/L | ✅ | ✅ |
+| Exposure analysis | ✅ | ✅ |
+| Persistent auth | — | ✅ |
+| Streaming events | ✅ | — |
+| Historical bars | ✅ | — |
 
-## E*Trade Setup
+## Commands
 
-If you select E*Trade during install, the installer will prompt for E*Trade OAuth setup and run `broker auth etrade`.
-If you skip that step, run manual auth anytime:
+```
+broker daemon start              Start the trading daemon
+broker daemon start --paper      Paper trading mode
+broker daemon status             Daemon status and connection info
+broker daemon stop               Graceful shutdown
+broker quote SYMBOL...           Snapshot quotes
+broker watch SYMBOL              Live quote stream
+broker chain SYMBOL              Option chain with greeks
+broker history SYMBOL            Historical bars
+broker order buy SYMBOL QTY      Buy order (market/limit/stop)
+broker order sell SYMBOL QTY     Sell order
+broker order bracket SYMBOL QTY  Bracket order (entry + TP + SL)
+broker order status ORDER_ID     Order status
+broker orders                    List orders
+broker cancel ORDER_ID           Cancel an order
+broker cancel --all              Cancel all open orders
+broker fills                     Execution history
+broker positions                 Current positions
+broker pnl                       P&L summary
+broker balance                   Account balances and margin
+broker exposure --by symbol      Exposure breakdown
+broker risk check                Pre-trade risk validation
+broker risk limits               Current risk limits
+broker risk set PARAM VALUE      Update a risk limit
+broker risk halt                 Emergency halt
+broker risk resume               Resume after halt
+broker audit orders              Order audit trail
+broker audit commands            Command audit trail
+broker auth etrade               E*Trade OAuth setup
+```
+
+## E\*Trade Setup
 
 ```bash
 broker auth etrade
 ```
 
-### Auto-Reauth (Headless)
+### Persistent Auth (Headless)
 
-To keep E*Trade authenticated across the daily midnight token expiry:
+Keep E\*Trade authenticated across the daily midnight token expiry:
 
-1. Install Playwright:
-   ```bash
-   pip install playwright && playwright install chromium
-   ```
-2. Add credentials to config:
-   ```json
-   {
-     "broker": {
-       "provider": "etrade",
-       "etrade": {
-         "consumer_key": "...",
-         "consumer_secret": "...",
-         "username": "your_etrade_username",
-         "password": "your_etrade_password",
-         "persistent_auth": true
-       }
-     }
-   }
-   ```
-   Or via environment variables:
-   ```bash
-   export BROKER_ETRADE_USERNAME=your_username
-   export BROKER_ETRADE_PASSWORD=your_password
-   export BROKER_ETRADE_PERSISTENT_AUTH=true
-   ```
-3. The daemon will refresh persistent auth around midnight ET and when access tokens expire.
+```json
+{
+  "broker": {
+    "provider": "etrade",
+    "etrade": {
+      "consumer_key": "...",
+      "consumer_secret": "...",
+      "username": "your_username",
+      "password": "your_password",
+      "persistent_auth": true
+    }
+  }
+}
+```
 
-Note: accounts with 2FA/MFA enabled cannot use persistent auth. Use `broker auth etrade` for manual authentication.
+Or via environment variables:
 
-## Storage Defaults
+```bash
+export BROKER_ETRADE_USERNAME=your_username
+export BROKER_ETRADE_PASSWORD=your_password
+export BROKER_ETRADE_PERSISTENT_AUTH=true
+```
 
-- Config: `~/.config/broker/config.json`
-- State: `~/.local/state/broker`
-- Data: `~/.local/share/broker`
+Requires Playwright: `pip install playwright && playwright install chromium`
+
+> Accounts with 2FA/MFA enabled cannot use persistent auth. Use `broker auth etrade` for manual authentication.
+
+## Configuration
+
+| Path | Description |
+|---|---|
+| `~/.config/broker/config.json` | Config file |
+| `~/.config/broker/etrade_tokens.json` | E\*Trade tokens |
+| `~/.local/state/broker/broker.sock` | Daemon socket |
+| `~/.local/state/broker/broker.log` | Daemon log |
+| `~/.local/share/broker/` | Audit data |
 
 ## Repository Layout
 
-- `cli/` broker CLI package
-- `daemon/` broker daemon package
-- `sdk/python/` Python SDK
-- `sdk/typescript/` TypeScript SDK
-- `install/` installer and bootstrap steps
-- `start.sh` / `stop.sh` local daemon wrapper scripts
-
-## Development Checks
-
-From repo root:
-
-```bash
-bun run ci:all
+```
+cli/           CLI package
+daemon/        Daemon package
+sdk/python/    Python SDK
+sdk/typescript/ TypeScript SDK
+install/       Installer and bootstrap
+website/       Marketing site (brokercli.com)
 ```
 
-## Git Hooks
-
-Husky is configured with a `pre-commit` hook that runs:
+## Development
 
 ```bash
-bun run ci:all
+bun install    # Install hooks
+bun run ci:all # Lint + typecheck + test
 ```
-
-After cloning, run `bun install` once to install hooks.
