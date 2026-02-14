@@ -143,10 +143,15 @@ export default function Home() {
     <main className="max-w-4xl mx-auto px-6 py-20">
       {/* Hero */}
       <section className="text-center mb-24">
-        <div className="inline-flex items-center gap-2 bg-[var(--card)] border border-[var(--border)] rounded-full px-4 py-1.5 text-sm text-[var(--muted)] mb-8">
+        <a
+          href="https://github.com/north-brook/broker-cli"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 bg-[var(--card)] border border-[var(--border)] rounded-full px-4 py-1.5 text-sm text-[var(--muted)] mb-8 hover:border-[var(--accent)] hover:text-[var(--foreground)] transition-colors"
+        >
           <span className="text-[var(--accent)]">●</span>
-          Open source
-        </div>
+          Open source ↗
+        </a>
 
         <h1 className="text-3xl sm:text-5xl md:text-6xl font-bold tracking-tight mb-6">
           Give your AI agent{" "}
