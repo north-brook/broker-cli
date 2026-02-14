@@ -34,6 +34,13 @@ export const metadata: Metadata = {
     description:
       "Open-source CLI that turns any brokerage into shell commands your AI agent already understands.",
   },
+  icons: {
+    icon: [
+      { url: "/favicon.png", sizes: "32x32", type: "image/png" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+    ],
+    apple: "/apple-touch-icon.png",
+  },
 };
 
 export default function RootLayout({
