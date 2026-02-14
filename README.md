@@ -12,10 +12,10 @@ Broker APIs exist. SDKs exist. But AI agents use the command line. **broker-cli*
 curl -fsSL https://brokercli.com/install | bash
 ```
 
-Or via pip:
+Or clone and install manually:
 
 ```bash
-pip install broker-cli
+git clone https://github.com/north-brook/broker-cli && cd broker-cli && ./install.sh
 ```
 
 ## Quick Start

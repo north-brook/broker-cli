@@ -41,16 +41,16 @@ function CopyButton({ text }: { text: string }) {
 }
 
 function InstallWidget() {
-  const [tab, setTab] = useState<"curl" | "pip">("curl");
+  const [tab, setTab] = useState<"curl" | "git">("curl");
   const commands = {
     curl: "curl -fsSL https://brokercli.com/install | bash",
-    pip: "pip install broker-cli",
+    git: "git clone https://github.com/north-brook/broker-cli && cd broker-cli && ./install.sh",
   };
 
   return (
     <div className="w-full max-w-lg mx-auto">
       <div className="flex gap-0 border border-[var(--border)] rounded-t-lg overflow-hidden bg-[var(--card)]">
-        {(["curl", "pip"] as const).map((t) => (
+        {(["curl", "git"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -60,7 +60,7 @@ function InstallWidget() {
                 : "text-[var(--muted)] hover:text-[var(--foreground)]"
             }`}
           >
-            {t === "curl" ? "One-liner" : "pip"}
+            {t === "curl" ? "One-liner" : "Manual"}
           </button>
         ))}
       </div>
