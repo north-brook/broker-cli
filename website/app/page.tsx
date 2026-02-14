@@ -143,7 +143,7 @@ export default function Home() {
       <section className="text-center mb-24">
         <div className="inline-flex items-center gap-2 bg-[var(--card)] border border-[var(--border)] rounded-full px-4 py-1.5 text-sm text-[var(--muted)] mb-8">
           <span className="text-[var(--accent)]">●</span>
-          Open source · Works with any AI agent
+          Open source
         </div>
 
         <h1 className="text-3xl sm:text-5xl md:text-6xl font-bold tracking-tight mb-6">
