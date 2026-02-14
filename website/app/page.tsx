@@ -48,7 +48,7 @@ function InstallWidget() {
   };
 
   return (
-    <div className="w-full max-w-lg mx-auto">
+    <div className="w-full max-w-2xl mx-auto">
       <div className="flex gap-0 border border-[var(--border)] rounded-t-lg overflow-hidden bg-[var(--card)]">
         {(["curl", "git"] as const).map((t) => (
           <button
@@ -64,10 +64,12 @@ function InstallWidget() {
           </button>
         ))}
       </div>
-      <div className="flex items-center gap-3 bg-[var(--card)] border border-t-0 border-[var(--border)] rounded-b-lg px-3 sm:px-5 py-3 sm:py-4 font-mono text-xs sm:text-base overflow-x-auto min-w-0 w-full">
-        <span className="text-[var(--accent)] shrink-0">$</span>
-        <code className="select-all whitespace-nowrap">{commands[tab]}</code>
-        <CopyButton text={commands[tab]} />
+      <div className="relative flex items-center bg-[var(--card)] border border-t-0 border-[var(--border)] rounded-b-lg px-3 sm:px-5 py-3 sm:py-4 font-mono text-xs sm:text-base overflow-x-auto min-w-0 w-full">
+        <span className="text-[var(--accent)] shrink-0 mr-3">$</span>
+        <code className="select-all whitespace-nowrap pr-20">{commands[tab]}</code>
+        <div className="absolute right-3">
+          <CopyButton text={commands[tab]} />
+        </div>
       </div>
     </div>
   );
