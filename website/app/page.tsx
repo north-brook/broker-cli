@@ -131,10 +131,9 @@ export default function Home() {
         </a>
 
         <h1 className="text-3xl sm:text-5xl md:text-6xl font-bold tracking-tight mb-6">
-          Give your AI agent{" "}
-          <span className="text-[var(--accent)]">
-            <br className="sm:hidden" />a brokerage account
-          </span>
+          Give your AI agent
+          <br />
+          <span className="text-[var(--accent)]">a brokerage account</span>
         </h1>
         <p className="text-lg text-[var(--muted)] mb-12 max-w-2xl mx-auto leading-relaxed">
           Broker APIs exist. SDKs exist. But AI agents use the command line.{" "}
@@ -149,18 +148,6 @@ export default function Home() {
         {/* Install widget */}
         <InstallWidget />
 
-        <div className="mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-[var(--muted)]">
-          <a
-            href="https://github.com/north-brook/broker-cli"
-            className="hover:text-[var(--foreground)] transition-colors"
-          >
-            GitHub ↗
-          </a>
-          <span className="hidden sm:inline">·</span>
-          <span>Python 3.12+</span>
-          <span className="hidden sm:inline">·</span>
-          <span>E*Trade · Interactive Brokers</span>
-        </div>
       </section>
 
 
