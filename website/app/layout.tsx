@@ -3,16 +3,35 @@ import { Header } from "./components/header";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "broker-cli — Algorithmic Trading from Your Terminal",
+  title: {
+    default: "Broker CLI — Give Your AI Agent a Brokerage Account",
+    template: "%s | Broker CLI",
+  },
   description:
-    "Open-source CLI for algorithmic trading. Connect to E*Trade and Interactive Brokers. Portfolio management, option chains, exposure analysis, and more.",
+    "Open-source CLI that turns any brokerage into shell commands your AI agent already understands. Interactive Brokers and E*Trade. Portfolio, options, exposure, and more.",
   metadataBase: new URL("https://brokercli.com"),
+  keywords: [
+    "broker cli",
+    "ai trading",
+    "algorithmic trading",
+    "interactive brokers cli",
+    "etrade cli",
+    "ai agent trading",
+    "terminal trading",
+  ],
   openGraph: {
-    title: "broker-cli",
-    description: "Algorithmic trading from your terminal",
+    title: "Broker CLI — Give Your AI Agent a Brokerage Account",
+    description:
+      "Open-source CLI that turns any brokerage into shell commands your AI agent already understands.",
     url: "https://brokercli.com",
-    siteName: "broker-cli",
+    siteName: "Broker CLI",
     type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Broker CLI — Give Your AI Agent a Brokerage Account",
+    description:
+      "Open-source CLI that turns any brokerage into shell commands your AI agent already understands.",
   },
 };
 
