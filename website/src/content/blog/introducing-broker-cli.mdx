@@ -1,0 +1,73 @@
+---
+title: "Introducing broker-cli: Give Your AI Agent a Brokerage Account"
+description: "broker-cli turns any brokerage into shell commands your AI agent already understands. Here's why we built it and how it works."
+date: "2026-02-14"
+author: "North Brook"
+tags: ["launch", "agentic-trading", "open-source"]
+---
+
+AI coding agents — Codex, Claude Code, OpenClaw — interact with the world through shell commands. They can `git push`, run tests, deploy apps. But they can't trade.
+
+Broker APIs exist. SDKs exist. But agents don't use HTTP clients or OAuth flows well. They use **bash**.
+
+**broker-cli** closes that gap.
+
+## What it does
+
+Install broker-cli, and your agent gets a full trading interface through the terminal:
+
+```bash
+broker quote AAPL MSFT          # Get quotes
+broker positions                # View portfolio
+broker exposure --by symbol     # Analyze risk
+broker order buy AAPL 100       # Place orders
+broker chain AAPL --type call   # Option chains with greeks
+broker cancel --all             # Cancel everything
+```
+
+Every command outputs JSON. Every action is deterministic. No SDKs, no API keys to manage, no custom integrations — just shell commands.
+
+## The SKILL.md advantage
+
+broker-cli ships with a `SKILL.md` file that agents read automatically. This means your agent knows every command, flag, and workflow without extra prompting. Point it at a task, and it figures out which commands to run:
+
+```
+$ codex exec "Check my portfolio. If any position exceeds 20% of NLV, trim it to 15%."
+
+agent → reading SKILL.md...
+agent → broker exposure --by symbol --json
+agent → TSLA is 34.2% of NLV. Reducing to 15%.
+agent → broker order sell TSLA 142 --limit 248.50
+✓ Order placed. TSLA exposure now 15.1% of NLV.
+```
+
+## Multi-broker, one interface
+
+broker-cli currently supports **Interactive Brokers** and **E\*Trade**, with a unified command interface across both. Your agent doesn't need to know which broker is behind the scenes — the commands are the same.
+
+| Feature | Interactive Brokers | E\*Trade |
+|---|:---:|:---:|
+| Real-time quotes | ✅ | ✅ |
+| Option chains + greeks | ✅ | ✅ |
+| All order types | ✅ | ✅ |
+| Exposure analysis | ✅ | ✅ |
+| Persistent auth | — | ✅ |
+| Streaming events | ✅ | — |
+
+## Safety first
+
+We built broker-cli with guardrails:
+
+- **Paper trading mode** — `broker daemon start --paper` for risk-free testing
+- **Pre-trade risk checks** — `broker risk check` validates orders before submission
+- **Exposure analysis** — real-time breakdown by symbol, sector, or asset class
+- **Emergency halt** — `broker risk halt` cancels everything and blocks new orders
+- **Cancel all** — instant position flattening when needed
+
+## Get started
+
+```bash
+curl -fsSL https://brokercli.com/install | bash
+```
+
+broker-cli is open source. Check out the [GitHub repo](https://github.com/north-brook/broker-cli), read the [full reference](https://brokercli.com/reference), and give your agent a brokerage account.

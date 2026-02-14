@@ -19,6 +19,16 @@ export function Header() {
 
         <div className="flex items-center gap-4">
           <Link
+            href="/blog"
+            className={`text-sm transition-colors ${
+              pathname.startsWith("/blog")
+                ? "text-[var(--foreground)]"
+                : "text-[var(--muted)] hover:text-[var(--foreground)]"
+            }`}
+          >
+            Blog
+          </Link>
+          <Link
             href="/reference"
             className={`text-sm transition-colors ${
               pathname === "/reference"
