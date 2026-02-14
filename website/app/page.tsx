@@ -23,7 +23,7 @@ function CopyButton({ text }: { text: string }) {
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       }}
-      className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors cursor-pointer"
+      className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-sm rounded border border-[var(--border)] bg-[var(--card)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors cursor-pointer"
     >
       {copied ? (
         <>
@@ -44,7 +44,7 @@ function InstallWidget() {
   const [tab, setTab] = useState<"curl" | "git">("curl");
   const commands = {
     curl: "curl -fsSL https://brokercli.com/install | bash",
-    git: "git clone https://github.com/north-brook/broker-cli && cd broker-cli && ./install.sh",
+    git: "git clone https://github.com/north-brook/broker-cli \\\n  && cd broker-cli \\\n  && ./install.sh",
   };
 
   return (
@@ -64,10 +64,10 @@ function InstallWidget() {
           </button>
         ))}
       </div>
-      <div className="relative flex items-center bg-[var(--card)] border border-t-0 border-[var(--border)] rounded-b-lg px-3 sm:px-5 py-3 sm:py-4 font-mono text-xs sm:text-base overflow-x-auto min-w-0 w-full">
-        <span className="text-[var(--accent)] shrink-0 mr-3">$</span>
-        <code className="select-all whitespace-nowrap pr-20">{commands[tab]}</code>
-        <div className="absolute right-3">
+      <div className="relative flex items-start bg-[var(--card)] border border-t-0 border-[var(--border)] rounded-b-lg px-3 sm:px-5 py-3 sm:py-4 font-mono text-xs sm:text-base min-w-0 w-full">
+        <span className="text-[var(--accent)] shrink-0 mr-3 leading-relaxed">$</span>
+        <pre className="select-all whitespace-pre pr-20 leading-relaxed">{commands[tab]}</pre>
+        <div className="absolute right-3 top-3 sm:top-4">
           <CopyButton text={commands[tab]} />
         </div>
       </div>
