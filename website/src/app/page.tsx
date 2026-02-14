@@ -88,6 +88,7 @@ function HeroVideo() {
       muted
       loop
       playsInline
+      poster="/hero-poster.jpg"
       className="w-full rounded-lg"
     >
       <source src="/hero-demo.webm" type="video/webm" />
