@@ -10,6 +10,8 @@ import {
   ShieldCheck,
   Copy,
   Check,
+  FlaskConical,
+  ArrowRight,
 } from "lucide-react";
 
 function CopyButton({ text }: { text: string }) {
@@ -262,10 +264,10 @@ export default function Home() {
                 >
                   <td className="px-5 py-2.5">{feature as string}</td>
                   <td className="text-center px-5 py-2.5">
-                    {ib ? "✅" : "—"}
+                    {ib ? <Check className="w-4 h-4 text-[var(--accent)] inline" /> : "—"}
                   </td>
                   <td className="text-center px-5 py-2.5">
-                    {et ? "✅" : "—"}
+                    {et ? <Check className="w-4 h-4 text-[var(--accent)] inline" /> : "—"}
                   </td>
                 </tr>
               ))}
@@ -276,10 +278,10 @@ export default function Home() {
 
       {/* Paper trading */}
       <section className="mb-24">
-        <div className="flex flex-wrap items-center gap-3 text-sm">
-          <span className="text-lg">🧪</span>
+        <div className="flex flex-wrap items-center gap-3 text-sm bg-[var(--accent)]/10 border border-[var(--accent)]/20 rounded-lg px-5 py-4">
+          <FlaskConical className="w-5 h-5 text-[var(--accent)]" />
           <span className="font-semibold">Start safe:</span>
-          <code className="text-[var(--accent)] bg-[var(--card)] border border-[var(--border)] px-2 py-1 rounded font-mono">
+          <code className="text-[var(--accent)] bg-[var(--background)] border border-[var(--accent)]/20 px-2 py-1 rounded font-mono">
             broker daemon start --paper
           </code>
           <span className="text-[var(--muted)]">
@@ -326,7 +328,7 @@ export default function Home() {
                 TSLA 142 --limit 248.50
               </p>
               <p>
-                <span className="text-[var(--accent)]">✓</span> Order placed.
+                <Check className="w-4 h-4 text-[var(--accent)] inline" /> Order placed.
                 TSLA exposure now 15.1% of NLV.
               </p>
             </div>
@@ -361,7 +363,7 @@ export default function Home() {
                 AAPL250220P220 1 --limit 3.45
               </p>
               <p>
-                <span className="text-[var(--accent)]">✓</span> Order placed.
+                <Check className="w-4 h-4 text-[var(--accent)] inline" /> Order placed.
               </p>
             </div>
           </div>
@@ -398,20 +400,13 @@ export default function Home() {
             </div>
           ))}
         </div>
+        <a
+          href="/reference"
+          className="inline-flex items-center gap-2 mt-6 text-sm text-[var(--accent)] hover:text-[var(--foreground)] transition-colors"
+        >
+          Full command reference <ArrowRight className="w-4 h-4" />
+        </a>
       </section>
-
-      {/* Footer */}
-      <footer className="text-center text-sm text-[var(--muted)] border-t border-[var(--border)] pt-8">
-        <p>
-          Built by{" "}
-          <a
-            href="https://northbrook.com"
-            className="hover:text-[var(--foreground)] transition-colors"
-          >
-            North Brook
-          </a>
-        </p>
-      </footer>
     </main>
   );
 }

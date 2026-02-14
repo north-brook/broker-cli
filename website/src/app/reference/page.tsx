@@ -576,18 +576,6 @@ export default function ReferencePage() {
           </div>
         </Section>
 
-        {/* Footer */}
-        <footer className="text-center text-sm text-[var(--muted)] border-t border-[var(--border)] pt-8">
-          <p>
-            Built by{" "}
-            <a
-              href="https://northbrook.com"
-              className="hover:text-[var(--foreground)] transition-colors"
-            >
-              North Brook
-            </a>
-          </p>
-        </footer>
       </div>
     </div>
   );
