@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import {
   BookOpen,
   Zap,
@@ -75,29 +75,6 @@ function InstallWidget() {
   );
 }
 
-function HeroVideo() {
-  const ref = useRef<HTMLVideoElement>(null);
-
-  useEffect(() => {
-    // Force play after client-side navigation remount
-    ref.current?.play().catch(() => {});
-  }, []);
-
-  return (
-    <video
-      ref={ref}
-      autoPlay
-      muted
-      loop
-      playsInline
-      poster="/hero-poster.jpg"
-      className="w-full rounded-lg"
-    >
-      <source src="/hero-demo.webm" type="video/webm" />
-      <source src="/hero-demo.mp4" type="video/mp4" />
-    </video>
-  );
-}
 
 const features = [
   {
@@ -186,12 +163,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Hero Demo */}
-      <section className="mb-24">
-        <div className="max-w-2xl mx-auto rounded-lg overflow-hidden">
-          <HeroVideo />
-        </div>
-      </section>
 
       {/* Why CLI */}
       <section className="mb-24">
