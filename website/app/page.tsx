@@ -220,7 +220,7 @@ export default function Home() {
                 ["Cancel all", true, true],
                 ["Positions & P/L", true, true],
                 ["Exposure analysis", true, true],
-                ["Persistent auth", false, true],
+                ["Persistent auth", true, true],
                 ["Streaming events", true, false],
                 ["Historical bars", true, false],
               ].map(([feature, ib, et]) => (

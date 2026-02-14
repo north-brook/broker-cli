@@ -48,7 +48,7 @@ broker order buy AAPL 100 --limit 185   # Place an order
 | Cancel all | ✅ | ✅ |
 | Positions & P/L | ✅ | ✅ |
 | Exposure analysis | ✅ | ✅ |
-| Persistent auth | — | ✅ |
+| Persistent auth | ✅ | ✅ |
 | Streaming events | ✅ | — |
 | Historical bars | ✅ | — |
 
