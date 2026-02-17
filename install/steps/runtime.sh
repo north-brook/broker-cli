@@ -86,6 +86,11 @@ if [[ \$# -ge 2 && "\$1" == "daemon" && "\$2" == "start" ]]; then
   exec "\${BROKER_ROOT}/start.sh" "\$@"
 fi
 
+if [[ \$# -ge 1 && "\$1" == "setup" ]]; then
+  shift
+  exec "\${BROKER_ROOT}/setup.sh" "\$@"
+fi
+
 exec "\${BROKER_CLI}" "\$@"
 EOF
   chmod +x "${broker_path}"

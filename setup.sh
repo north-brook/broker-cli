@@ -20,8 +20,27 @@ BROKER_CONFIG_JSON="${BROKER_CONFIG_JSON:-${BROKER_CONFIG_HOME}/config.json}"
 BROKER_STATE_HOME="${XDG_STATE_HOME:-${HOME}/.local/state}/broker"
 BROKER_DATA_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/broker"
 BROKER_BIN_DIR="${BROKER_BIN_DIR:-${HOME}/.local/bin}"
+IB_CHANNEL="${BROKER_IB_CHANNEL:-stable}"
+IB_INSTALL_DIR="${BROKER_IB_INSTALL_DIR:-/Applications/IB Gateway}"
+IBC_RELEASE_TAG="${BROKER_IBC_RELEASE_TAG:-latest}"
+IBC_INSTALL_DIR="${BROKER_IBC_INSTALL_DIR:-${BROKER_DATA_HOME}/ibc}"
+INSTALL_IB_APP="${INSTALL_IB_APP:-1}"
+LOG_DIR="$(mktemp -d /tmp/broker-setup.XXXXXX)"
+STEP_INDEX=0
+STEP_TOTAL=0
 
 export BROKER_CONFIG_HOME BROKER_CONFIG_JSON BROKER_STATE_HOME BROKER_DATA_HOME
+export IBC_RELEASE_TAG IBC_INSTALL_DIR
+export BROKER_IBC_PATH="${IBC_INSTALL_DIR}"
+export BROKER_IBC_INI="${BROKER_IBC_PATH}/config.ini"
+export BROKER_IBC_LOG_FILE="${BROKER_STATE_HOME}/logs/ibc-launch.log"
+export BROKER_IB_SETTINGS_DIR="${BROKER_STATE_HOME}/ib-settings"
+
+cleanup_setup_tmp() {
+  rm -rf "${LOG_DIR}" >/dev/null 2>&1 || true
+}
+
+trap cleanup_setup_tmp EXIT
 
 if [[ -t 1 ]]; then
   BOLD="$(printf '\033[1m')"
@@ -41,8 +60,11 @@ INTERACTIVE=0
 # ─── Source helpers ───────────────────────────────────────────────────────────
 
 INSTALL_STEPS_DIR="${ROOT_DIR}/install/steps"
+source "${INSTALL_STEPS_DIR}/output.sh"
 source "${INSTALL_STEPS_DIR}/secrets.sh"
 source "${INSTALL_STEPS_DIR}/onboarding.sh"
+source "${INSTALL_STEPS_DIR}/broker.sh"
+source "${INSTALL_STEPS_DIR}/runtime.sh"
 
 # ─── Guards ───────────────────────────────────────────────────────────────────
 
@@ -72,6 +94,17 @@ normalize_selected_provider() {
   esac
 }
 normalize_selected_provider
+
+# ─── Provider-specific install ──────────────────────────────────────────────
+
+if [[ "${SELECTED_PROVIDER}" == "ib" ]]; then
+  STEP_TOTAL=2
+  run_step "Interactive Brokers Gateway setup" install_ib_app
+  run_step "Installing IBC automation package" install_ibc
+else
+  STEP_TOTAL=1
+  run_step "Installing E*Trade dependencies" install_etrade_dependencies
+fi
 
 # ─── Onboarding ──────────────────────────────────────────────────────────────
 

@@ -26,36 +26,18 @@ BROKER_REPO="${BROKER_REPO:-https://github.com/north-brook/broker-cli.git}"
 export PATH="/opt/homebrew/bin:/usr/local/bin:/home/linuxbrew/.linuxbrew/bin:${PATH}"
 
 PYTHON_VERSION="${PYTHON_VERSION:-3.12}"
-IB_CHANNEL="${BROKER_IB_CHANNEL:-stable}"
-IB_INSTALL_DIR="${BROKER_IB_INSTALL_DIR:-/Applications/IB Gateway}"
-IBC_RELEASE_TAG="${BROKER_IBC_RELEASE_TAG:-latest}"
-IBC_INSTALL_DIR="${BROKER_IBC_INSTALL_DIR:-${BROKER_DATA_HOME}/ibc}"
 BROKER_BIN_DIR="${BROKER_BIN_DIR:-${HOME}/.local/bin}"
 LOG_DIR="$(mktemp -d /tmp/broker-install.XXXXXX)"
 STEP_INDEX=0
 STEP_TOTAL=0
 INTERACTIVE=0
-SELECTED_PROVIDER="ib"
 
 export BROKER_CONFIG_HOME BROKER_CONFIG_JSON BROKER_STATE_HOME BROKER_DATA_HOME
-export BROKER_SOURCE_DIR BROKER_REPO IBC_RELEASE_TAG IBC_INSTALL_DIR
+export BROKER_SOURCE_DIR BROKER_REPO
 export BROKER_RUNTIME_PID_FILE="${BROKER_STATE_HOME}/broker-daemon.pid"
 export BROKER_RUNTIME_SOCKET_PATH="${BROKER_STATE_HOME}/broker.sock"
 export BROKER_LOGGING_AUDIT_DB="${BROKER_STATE_HOME}/audit.db"
 export BROKER_LOGGING_LOG_FILE="${BROKER_STATE_HOME}/broker.log"
-export BROKER_IBC_PATH="${IBC_INSTALL_DIR}"
-export BROKER_IBC_INI="${BROKER_IBC_PATH}/config.ini"
-export BROKER_IBC_LOG_FILE="${BROKER_STATE_HOME}/logs/ibc-launch.log"
-export BROKER_IB_SETTINGS_DIR="${BROKER_STATE_HOME}/ib-settings"
-
-# Parse --provider flag (non-interactive alternative to provider selection)
-for arg in "$@"; do
-  case "${arg}" in
-    --provider=*)
-      SELECTED_PROVIDER="${arg#*=}"
-      ;;
-  esac
-done
 
 if [[ -t 1 ]]; then
   INTERACTIVE=1
@@ -82,7 +64,6 @@ INSTALL_STEPS_DIR="${ROOT_DIR}/install/steps"
 source "${INSTALL_STEPS_DIR}/output.sh"
 source "${INSTALL_STEPS_DIR}/bootstrap.sh"
 source "${INSTALL_STEPS_DIR}/workspace.sh"
-source "${INSTALL_STEPS_DIR}/broker.sh"
 source "${INSTALL_STEPS_DIR}/runtime.sh"
 
 if [[ ! -d "${ROOT_DIR}/daemon" || ! -d "${ROOT_DIR}/cli" || ! -d "${ROOT_DIR}/sdk" ]]; then
@@ -91,26 +72,10 @@ fi
 
 # ─── Calculate steps ─────────────────────────────────────────────────────────
 
-normalize_selected_provider() {
-  case "$(printf '%s' "${SELECTED_PROVIDER}" | tr '[:upper:]' '[:lower:]')" in
-    ib|etrade) ;;
-    *) SELECTED_PROVIDER="ib" ;;
-  esac
-}
-
-normalize_selected_provider
-
-# Install-only steps (no onboarding, no interactive provider selection)
+# Install-only shared steps (provider-specific dependencies are installed in setup.sh)
 # 1. Prepare dirs  2. Bootstrap tooling  3. Create config
-# 4. IB Gateway (if ib)  5. IBC (if ib)  6. Python runtime
-# 7. Python packages  8. E*Trade deps (if etrade)  9. Link CLI  10. Completions
+# 4. Python runtime  5. Python packages  6. Link CLI  7. Completions
 STEP_TOTAL=7
-if [[ "${SELECTED_PROVIDER}" == "ib" ]]; then
-  STEP_TOTAL=$((STEP_TOTAL + 2))  # IB Gateway + IBC
-fi
-if [[ "${SELECTED_PROVIDER}" == "etrade" ]]; then
-  STEP_TOTAL=$((STEP_TOTAL + 1))  # E*Trade deps
-fi
 
 # ─── Install ─────────────────────────────────────────────────────────────────
 
@@ -118,15 +83,8 @@ banner
 run_step "Preparing broker config/state/data directories" prepare_broker_home
 run_step "Bootstrapping system tooling (Homebrew, uv)" bootstrap_tooling
 run_step "Creating broker config (${BROKER_CONFIG_JSON})" ensure_broker_config
-if [[ "${SELECTED_PROVIDER}" == "ib" ]]; then
-  run_step "Interactive Brokers Gateway setup" install_ib_app
-  run_step "Installing IBC automation package" install_ibc
-fi
 run_step "Creating Python runtime" create_python_runtime
 run_step "Installing broker Python packages" install_python_packages
-if [[ "${SELECTED_PROVIDER}" == "etrade" ]]; then
-  run_step "Installing E*Trade dependencies" install_etrade_dependencies
-fi
 run_step "Linking broker CLI command" bind_broker_command
 run_step "Installing shell completions" install_shell_completions
 
@@ -140,4 +98,4 @@ fi
 
 echo "${GREEN}✔${RESET} Broker is installed."
 echo ""
-echo "${BLUE}→${RESET} Next: run ${BOLD}${BLUE}./setup.sh${RESET} to configure your broker credentials"
+echo "${BLUE}→${RESET} Next: run ${BOLD}${BLUE}broker setup${RESET} to choose a broker provider and configure credentials"

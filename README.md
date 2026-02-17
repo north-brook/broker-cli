@@ -18,9 +18,16 @@ Or clone and install manually:
 git clone https://github.com/north-brook/broker-cli && cd broker-cli && ./install.sh
 ```
 
+Then finish provider setup from any directory:
+
+```bash
+broker setup
+```
+
 ## Quick Start
 
 ```bash
+broker setup                   # Choose provider + configure credentials
 broker daemon start --paper   # Start in paper trading mode
 broker daemon status           # Check connection
 broker quote AAPL MSFT         # Get quotes
@@ -59,6 +66,7 @@ broker daemon start              Start the trading daemon
 broker daemon start --paper      Paper trading mode
 broker daemon status             Daemon status and connection info
 broker daemon stop               Graceful shutdown
+broker setup                     Choose provider and configure credentials
 broker quote SYMBOL...           Snapshot quotes
 broker watch SYMBOL              Live quote stream
 broker chain SYMBOL              Option chain with greeks

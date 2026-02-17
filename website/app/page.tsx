@@ -43,8 +43,8 @@ function CopyButton({ text }: { text: string }) {
 function InstallWidget() {
   const [tab, setTab] = useState<"curl" | "git">("curl");
   const commands = {
-    curl: "curl -fsSL https://brokercli.com/install | bash",
-    git: "git clone https://github.com/north-brook/broker-cli \\\n  && cd broker-cli \\\n  && ./install.sh",
+    curl: "curl -fsSL https://brokercli.com/install | bash\nbroker setup",
+    git: "git clone https://github.com/north-brook/broker-cli \\\n  && cd broker-cli \\\n  && ./install.sh\nbroker setup",
   };
 
   return (
@@ -151,6 +151,9 @@ export default function Home() {
 
         {/* Install widget */}
         <InstallWidget />
+        <p className="text-sm text-[var(--muted)] mt-4">
+          Run <code className="text-[var(--foreground)]">broker setup</code> once after install to choose your provider and configure credentials.
+        </p>
 
       </section>
 
@@ -255,7 +258,7 @@ export default function Home() {
             broker daemon start --paper
           </code>
           <span className="text-[var(--muted)]">
-            — full paper trading mode. Test strategies with zero risk, go live
+            — after <code className="text-[var(--foreground)]">broker setup</code>, use full paper trading mode. Test strategies with zero risk, go live
             when ready.
           </span>
         </div>
@@ -348,6 +351,7 @@ export default function Home() {
         </p>
         <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-4 sm:p-5 font-mono text-xs sm:text-sm space-y-2">
           {[
+            ["broker setup", "Choose provider and configure credentials"],
             ["broker daemon start", "Start the trading daemon"],
             ["broker daemon start --paper", "Paper trading mode"],
             ["broker portfolio", "View all positions"],
