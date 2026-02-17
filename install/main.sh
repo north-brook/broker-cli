@@ -140,4 +140,4 @@ fi
 
 echo "${GREEN}✔${RESET} Broker is installed."
 echo ""
-echo "${BLUE}→${RESET} Next: run ${BOLD}${BLUE}./install.sh --onboarding-only${RESET} to configure your broker credentials"
+echo "${BLUE}→${RESET} Next: run ${BOLD}${BLUE}./setup.sh${RESET} to configure your broker credentials"
