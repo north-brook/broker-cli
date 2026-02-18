@@ -22,7 +22,7 @@ CONNECTIVITY_ERROR_TOKENS = ("not connected", "disconnect", "connection", "socke
 VALID_EXPOSURE_GROUPS = {"symbol", "currency", "sector", "asset_class"}
 MARKET_DATA_BLOCK_ERROR_CODES = {10089, 10197}
 MARKET_DATA_BLOCK_TTL_SECONDS = 30
-QUOTE_EXCHANGE = "IEX"
+QUOTE_EXCHANGE = "SMART"
 
 
 class IBProvider(BrokerProvider):

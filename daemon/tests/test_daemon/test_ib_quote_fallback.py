@@ -126,7 +126,7 @@ async def test_quote_keeps_live_data_when_available(fake_ib_module: type[_FakeIB
     ib = fake_ib_module.instances[-1]
     assert quotes[0].last == pytest.approx(190.01)
     assert ib.req_tickers_calls == [("AAPL",)]
-    assert all(contract.exchange == "IEX" for contract in ib.req_ticker_contracts[0])
+    assert all(contract.exchange == "SMART" for contract in ib.req_ticker_contracts[0])
     assert ib.market_data_type_calls == []
 
 
