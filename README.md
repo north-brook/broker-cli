@@ -67,6 +67,7 @@ broker daemon start --paper      Paper trading mode
 broker daemon status             Daemon status and connection info
 broker daemon stop               Graceful shutdown
 broker setup                     Choose provider and configure credentials
+broker update                    Sync local install to latest commit on main
 broker uninstall                 Remove broker-cli install/setup artifacts
 broker quote SYMBOL...           Snapshot quotes
 broker watch SYMBOL              Live quote stream

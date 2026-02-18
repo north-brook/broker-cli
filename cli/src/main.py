@@ -10,6 +10,7 @@ import market
 import orders
 import portfolio
 import risk
+import update
 from _common import CLIState, build_typer, load_config
 
 app = build_typer(
@@ -33,6 +34,7 @@ app.add_typer(audit.app, name="audit")
 app.command("orders", help="List orders with optional filters.")(orders.orders)
 app.command("cancel", help="Cancel one order, or all open orders with --all.")(orders.cancel)
 app.command("fills", help="List fills/execution history.")(orders.fills)
+app.command("update", help="Sync broker-cli source checkout to latest origin/main.")(update.update)
 
 
 @app.callback()

@@ -100,6 +100,7 @@ def test_root_command_surface_contract(runner: CliRunner) -> None:
         "orders",
         "cancel",
         "fills",
+        "update",
         "daemon",
         "quote",
         "watch",

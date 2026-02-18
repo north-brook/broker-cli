@@ -153,6 +153,16 @@ export default function ReferencePage() {
             notes="Use this command for all provider onboarding."
           />
           <Cmd
+            name="broker update"
+            description="Sync broker-cli source checkout to the latest commit on origin/main."
+            usage="broker update [OPTIONS]"
+            flags={[
+              { flag: "--force", description: "Discard tracked local changes before syncing" },
+              { flag: "--reinstall / --no-reinstall", description: "Reinstall editable packages after syncing" },
+            ]}
+            example={`$ broker update\n{"ok": true, "updated": true, "branch": "main", ...}`}
+          />
+          <Cmd
             name="broker uninstall"
             description="Remove broker-cli install/setup artifacts (config, state, data, runtime, wrappers, completions)."
             usage="broker uninstall [OPTIONS]"
