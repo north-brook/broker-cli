@@ -43,8 +43,8 @@ function CopyButton({ text }: { text: string }) {
 function InstallWidget() {
   const [tab, setTab] = useState<"curl" | "git">("curl");
   const commands = {
-    curl: "curl -fsSL https://brokercli.com/install | bash\nbroker setup",
-    git: "git clone https://github.com/north-brook/broker-cli \\\n  && cd broker-cli \\\n  && ./install.sh\nbroker setup",
+    curl: "curl -fsSL https://brokercli.com/install | bash",
+    git: "git clone https://github.com/north-brook/broker-cli \\\n  && cd broker-cli \\\n  && ./install.sh",
   };
 
   return (
