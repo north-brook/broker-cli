@@ -27,7 +27,7 @@ from broker_daemon.providers.etrade_reauth import headless_reauth
 
 logger = logging.getLogger(__name__)
 
-AUTH_REQUIRED_SUGGESTION = "Run `broker auth etrade` to create fresh E*Trade tokens."
+AUTH_REQUIRED_SUGGESTION = "Run `broker setup` to create fresh E*Trade tokens."
 RENEW_INTERVAL_SECONDS = 90 * 60
 RENEW_LOOP_SLEEP_SECONDS = 60
 MIDNIGHT_REAUTH_WINDOW_MINUTES = 5

@@ -14,23 +14,23 @@ done
 INSTALL_DIR="$(cd -P "$(dirname "${SCRIPT_SOURCE}")" && pwd)"
 ROOT_DIR="$(cd -P "${INSTALL_DIR}/.." && pwd)"
 
+# ─── Source common helpers ───────────────────────────────────────────────────
+
+INSTALL_STEPS_DIR="${ROOT_DIR}/install/steps"
+source "${INSTALL_STEPS_DIR}/common.sh"
+
 # ─── Configuration paths ─────────────────────────────────────────────────────
 
-BROKER_CONFIG_HOME="${XDG_CONFIG_HOME:-${HOME}/.config}/broker"
-BROKER_CONFIG_JSON="${BROKER_CONFIG_JSON:-${BROKER_CONFIG_HOME}/config.json}"
-BROKER_STATE_HOME="${XDG_STATE_HOME:-${HOME}/.local/state}/broker"
-BROKER_DATA_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/broker"
+init_broker_common_paths
 BROKER_SOURCE_DIR="${BROKER_SOURCE_DIR:-${BROKER_DATA_HOME}/source}"
 BROKER_REPO="${BROKER_REPO:-https://github.com/north-brook/broker-cli.git}"
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:/home/linuxbrew/.linuxbrew/bin:${PATH}"
 
 PYTHON_VERSION="${PYTHON_VERSION:-3.12}"
-BROKER_BIN_DIR="${BROKER_BIN_DIR:-${HOME}/.local/bin}"
 LOG_DIR="$(mktemp -d /tmp/broker-install.XXXXXX)"
 STEP_INDEX=0
 STEP_TOTAL=0
-INTERACTIVE=0
 
 export BROKER_CONFIG_HOME BROKER_CONFIG_JSON BROKER_STATE_HOME BROKER_DATA_HOME
 export BROKER_SOURCE_DIR BROKER_REPO
@@ -39,28 +39,10 @@ export BROKER_RUNTIME_SOCKET_PATH="${BROKER_STATE_HOME}/broker.sock"
 export BROKER_LOGGING_AUDIT_DB="${BROKER_STATE_HOME}/audit.db"
 export BROKER_LOGGING_LOG_FILE="${BROKER_STATE_HOME}/broker.log"
 
-if [[ -t 1 ]]; then
-  INTERACTIVE=1
-  BOLD="$(printf '\033[1m')"
-  DIM="$(printf '\033[2m')"
-  BLUE="$(printf '\033[34m')"
-  GREEN="$(printf '\033[32m')"
-  YELLOW="$(printf '\033[33m')"
-  RED="$(printf '\033[31m')"
-  RESET="$(printf '\033[0m')"
-else
-  BOLD=""
-  DIM=""
-  BLUE=""
-  GREEN=""
-  YELLOW=""
-  RED=""
-  RESET=""
-fi
+init_broker_terminal "stdout"
 
 # ─── Source helpers ───────────────────────────────────────────────────────────
 
-INSTALL_STEPS_DIR="${ROOT_DIR}/install/steps"
 source "${INSTALL_STEPS_DIR}/output.sh"
 source "${INSTALL_STEPS_DIR}/bootstrap.sh"
 source "${INSTALL_STEPS_DIR}/workspace.sh"

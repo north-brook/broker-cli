@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import typer
 
-import auth
 import audit
 import daemon
 import market
@@ -24,7 +23,6 @@ app = build_typer(
 )
 
 app.add_typer(daemon.app, name="daemon")
-app.add_typer(auth.app, name="auth")
 app.add_typer(market.app)
 app.add_typer(orders.order_app, name="order")
 app.add_typer(portfolio.app)

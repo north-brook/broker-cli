@@ -99,8 +99,8 @@ function Section({
 }
 
 const sections = [
+  { id: "setup", label: "Setup" },
   { id: "daemon", label: "Daemon" },
-  { id: "auth", label: "Auth" },
   { id: "market", label: "Market Data" },
   { id: "orders", label: "Orders" },
   { id: "portfolio", label: "Portfolio" },
@@ -140,6 +140,30 @@ export default function ReferencePage() {
           </p>
         </div>
 
+        {/* Setup */}
+        <Section
+          id="setup"
+          title="Setup"
+          description="Install-time onboarding and cleanup. E*Trade OAuth is handled inside `broker setup`."
+        >
+          <Cmd
+            name="broker setup"
+            description="Interactive setup wizard: choose provider, configure credentials, and complete E*Trade OAuth."
+            usage="broker setup"
+            notes="Use this command for all provider onboarding."
+          />
+          <Cmd
+            name="broker uninstall"
+            description="Remove broker-cli install/setup artifacts (config, state, data, runtime, wrappers, completions)."
+            usage="broker uninstall [OPTIONS]"
+            flags={[
+              { flag: "--yes", description: "Skip interactive confirmation" },
+              { flag: "--keep-ib-app", description: "Keep installed IB Gateway app" },
+              { flag: "--keep-source", description: "Keep source checkout under ~/.local/share/broker/source" },
+            ]}
+          />
+        </Section>
+
         {/* Daemon */}
         <Section
           id="daemon"
@@ -176,26 +200,6 @@ export default function ReferencePage() {
             flags={[
               { flag: "--paper", description: "Restart using paper trading port" },
             ]}
-          />
-        </Section>
-
-        {/* Auth */}
-        <Section
-          id="auth"
-          title="Authentication"
-          description="Authenticate with broker providers. Tokens are stored locally and used by the daemon."
-        >
-          <Cmd
-            name="broker auth etrade"
-            description="Interactive OAuth flow for E*Trade. Opens a URL, prompts for verification code, and stores tokens."
-            usage="broker auth etrade [OPTIONS]"
-            flags={[
-              { flag: "--consumer-key KEY", description: "E*Trade consumer key" },
-              { flag: "--consumer-secret SECRET", description: "E*Trade consumer secret" },
-              { flag: "--sandbox", description: "Use E*Trade sandbox API" },
-            ]}
-            example={`$ broker auth etrade\nOpen this URL in your browser, sign in, and approve access:\nhttps://us.etrade.com/e/t/etws/authorize?key=...&token=...\nEnter E*Trade verification code: A1B2C3\n{"ok": true, "token_path": "~/.config/broker/etrade_tokens.json"}`}
-            notes="For headless/agent use, enable persistent_auth in config to auto-refresh tokens at midnight ET. Accounts with 2FA cannot use persistent auth."
           />
         </Section>
 

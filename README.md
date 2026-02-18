@@ -67,6 +67,7 @@ broker daemon start --paper      Paper trading mode
 broker daemon status             Daemon status and connection info
 broker daemon stop               Graceful shutdown
 broker setup                     Choose provider and configure credentials
+broker uninstall                 Remove broker-cli install/setup artifacts
 broker quote SYMBOL...           Snapshot quotes
 broker watch SYMBOL              Live quote stream
 broker chain SYMBOL              Option chain with greeks
@@ -90,13 +91,12 @@ broker risk halt                 Emergency halt
 broker risk resume               Resume after halt
 broker audit orders              Order audit trail
 broker audit commands            Command audit trail
-broker auth etrade               E*Trade OAuth setup
 ```
 
 ## E\*Trade Setup
 
 ```bash
-broker auth etrade
+broker setup
 ```
 
 ### Persistent Auth (Headless)
@@ -128,7 +128,15 @@ export BROKER_ETRADE_PERSISTENT_AUTH=true
 
 Requires Playwright: `pip install playwright && playwright install chromium`
 
-> Accounts with 2FA/MFA enabled cannot use persistent auth. Use `broker auth etrade` for manual authentication.
+> Accounts with 2FA/MFA enabled cannot use persistent auth. Run `broker setup` to complete manual OAuth when needed.
+
+## Uninstall
+
+```bash
+broker uninstall
+```
+
+Use `broker uninstall --yes` for non-interactive cleanup.
 
 ## Configuration
 

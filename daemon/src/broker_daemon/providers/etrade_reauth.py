@@ -19,8 +19,8 @@ except ImportError:  # pragma: no cover - optional dependency
 logger = logging.getLogger(__name__)
 
 STEP_TIMEOUT_MS = 30_000
-MANUAL_AUTH_SUGGESTION = "Run `broker auth etrade` to authenticate manually."
-TWO_FACTOR_SUGGESTION = "Persistent auth cannot handle 2FA; disable 2FA or run `broker auth etrade` manually."
+MANUAL_AUTH_SUGGESTION = "Run `broker setup` to authenticate manually."
+TWO_FACTOR_SUGGESTION = "Persistent auth cannot handle 2FA; disable 2FA or run `broker setup` manually."
 
 _TWO_FACTOR_TOKENS = (
     "two-factor",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   BookOpen,
   Zap,
@@ -13,6 +13,14 @@ import {
   FlaskConical,
   ArrowRight,
 } from "lucide-react";
+
+function InlineCliCommand({ children }: { children: ReactNode }) {
+  return (
+    <code className="inline-flex items-center rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-0.5 font-mono text-[0.84em] text-[var(--foreground)]">
+      {children}
+    </code>
+  );
+}
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -152,7 +160,7 @@ export default function Home() {
         {/* Install widget */}
         <InstallWidget />
         <p className="text-sm text-[var(--muted)] mt-4">
-          Run <code className="text-[var(--foreground)]">broker setup</code> once after install to choose your provider and configure credentials.
+          Run <InlineCliCommand>broker setup</InlineCliCommand> once after install to choose your provider and configure credentials.
         </p>
 
       </section>
@@ -168,7 +176,7 @@ export default function Home() {
             <p>
               AI coding agents — Codex, Claude Code, OpenClaw — interact with
               the world through shell commands. They can{" "}
-              <code className="text-[var(--foreground)]">git push</code>, run
+              <InlineCliCommand>git push</InlineCliCommand>, run
               tests, deploy apps. But they can&apos;t trade, because broker APIs
               require HTTP clients, OAuth flows, and SDK setup that agents
               don&apos;t do well.
@@ -254,11 +262,9 @@ export default function Home() {
         <div className="flex flex-wrap items-center gap-3 text-sm bg-[var(--accent)]/10 border border-[var(--accent)]/20 rounded-lg px-5 py-4">
           <FlaskConical className="w-5 h-5 text-[var(--accent)]" />
           <span className="font-semibold">Start safe:</span>
-          <code className="text-[var(--accent)] bg-[var(--background)] border border-[var(--accent)]/20 px-2 py-1 rounded font-mono">
-            broker daemon start --paper
-          </code>
+          <InlineCliCommand>broker daemon start --paper</InlineCliCommand>
           <span className="text-[var(--muted)]">
-            — after <code className="text-[var(--foreground)]">broker setup</code>, use full paper trading mode. Test strategies with zero risk, go live
+            — after <InlineCliCommand>broker setup</InlineCliCommand>, use full paper trading mode. Test strategies with zero risk, go live
             when ready.
           </span>
         </div>
@@ -352,6 +358,7 @@ export default function Home() {
         <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-4 sm:p-5 font-mono text-xs sm:text-sm space-y-2">
           {[
             ["broker setup", "Choose provider and configure credentials"],
+            ["broker uninstall", "Fully remove broker installation artifacts"],
             ["broker daemon start", "Start the trading daemon"],
             ["broker daemon start --paper", "Paper trading mode"],
             ["broker portfolio", "View all positions"],
@@ -363,7 +370,7 @@ export default function Home() {
             ["broker order buy AAPL 100 --limit 185", "Place orders"],
             ["broker cancel-all", "Cancel all open orders"],
             ["broker orders", "List open orders"],
-            ["broker auth etrade", "Authenticate with a broker"],
+            ["broker daemon status", "Check daemon and broker connection"],
           ].map(([cmd, desc]) => (
             <div key={cmd} className="flex flex-col sm:flex-row sm:gap-4">
               <span className="text-[var(--foreground)]">

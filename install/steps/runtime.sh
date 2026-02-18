@@ -91,6 +91,11 @@ if [[ \$# -ge 1 && "\$1" == "setup" ]]; then
   exec "\${BROKER_ROOT}/setup.sh" "\$@"
 fi
 
+if [[ \$# -ge 1 && "\$1" == "uninstall" ]]; then
+  shift
+  exec "\${BROKER_ROOT}/uninstall.sh" "\$@"
+fi
+
 exec "\${BROKER_CLI}" "\$@"
 EOF
   chmod +x "${broker_path}"
