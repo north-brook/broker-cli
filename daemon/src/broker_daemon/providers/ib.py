@@ -22,6 +22,7 @@ CONNECTIVITY_ERROR_TOKENS = ("not connected", "disconnect", "connection", "socke
 VALID_EXPOSURE_GROUPS = {"symbol", "currency", "sector", "asset_class"}
 MARKET_DATA_BLOCK_ERROR_CODES = {10089, 10197}
 MARKET_DATA_BLOCK_TTL_SECONDS = 30
+QUOTE_EXCHANGE = "IEX"
 
 
 class IBProvider(BrokerProvider):
@@ -280,7 +281,7 @@ class IBProvider(BrokerProvider):
 
             ib_mod = __import__("ib_async", fromlist=["Stock"])
             Stock = getattr(ib_mod, "Stock")
-            contracts = [Stock(sym.upper(), "SMART", "USD") for sym in symbols]
+            contracts = [Stock(sym.upper(), QUOTE_EXCHANGE, "USD") for sym in symbols]
             try:
                 await self._ib.qualifyContractsAsync(*contracts)
             except Exception:

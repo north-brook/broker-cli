@@ -180,9 +180,7 @@ def _warn_on_empty_quotes(quotes: list[dict[str, object]], *, provider: str) -> 
     if provider == "ib":
         typer.echo(
             f"No quote data returned for {symbol_text} (bid/ask/last/volume are null). "
-            'This often means missing IBKR API market-data permissions. Check '
-            '~/.local/state/broker/broker.log for "Error 10089", then enable the required '
-            "market-data subscription or delayed data in IBKR.",
+            "Verify IBKR market-data permissions/subscriptions for the requested symbol.",
             err=True,
         )
         return

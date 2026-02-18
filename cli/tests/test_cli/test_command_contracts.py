@@ -206,7 +206,7 @@ def test_quote_warns_when_fields_are_all_null(monkeypatch: pytest.MonkeyPatch, r
     assert result.exit_code == 0
     combined = _strip_ansi(result.stdout + getattr(result, "stderr", ""))
     assert "No quote data returned for AAPL" in combined
-    assert "Error 10089" in combined
+    assert "market-data permissions/subscriptions" in combined
 
 
 def test_quote_does_not_warn_when_last_price_is_present(

@@ -46,6 +46,7 @@ class _FakeIB:
         self.market_data_type = 1
         self.market_data_type_calls: list[int] = []
         self.req_tickers_calls: list[tuple[str, ...]] = []
+        self.req_ticker_contracts: list[tuple[_FakeContract, ...]] = []
         self.disconnectedEvent = _FakeEvent()
         self.orderStatusEvent = _FakeEvent()
         self.execDetailsEvent = _FakeEvent()
@@ -73,6 +74,7 @@ class _FakeIB:
         self.market_data_type_calls.append(market_data_type)
 
     async def reqTickersAsync(self, *contracts: _FakeContract) -> list[_FakeTicker]:
+        self.req_ticker_contracts.append(tuple(contracts))
         self.req_tickers_calls.append(tuple(contract.symbol for contract in contracts))
         source = _FakeIB.delayed_by_symbol if self.market_data_type == 3 else _FakeIB.live_by_symbol
         return [_FakeTicker(contract, source.get(contract.symbol)) for contract in contracts]
@@ -124,6 +126,7 @@ async def test_quote_keeps_live_data_when_available(fake_ib_module: type[_FakeIB
     ib = fake_ib_module.instances[-1]
     assert quotes[0].last == pytest.approx(190.01)
     assert ib.req_tickers_calls == [("AAPL",)]
+    assert all(contract.exchange == "IEX" for contract in ib.req_ticker_contracts[0])
     assert ib.market_data_type_calls == []
 
 
