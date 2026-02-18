@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Awaitable, Callable
 
 from broker_daemon.audit.logger import AuditLogger
@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 
 CONNECTIVITY_ERROR_TOKENS = ("not connected", "disconnect", "connection", "socket", "transport")
 VALID_EXPOSURE_GROUPS = {"symbol", "currency", "sector", "asset_class"}
+MARKET_DATA_BLOCK_ERROR_CODES = {10089, 10197}
+MARKET_DATA_BLOCK_TTL_SECONDS = 30
 
 
 class IBProvider(BrokerProvider):
@@ -39,6 +41,7 @@ class IBProvider(BrokerProvider):
         self._connect_lock = asyncio.Lock()
         self._connected_at: datetime | None = None
         self._last_error: str | None = None
+        self._last_market_data_block_at: datetime | None = None
         self._reconnect_task: asyncio.Task[None] | None = None
         self._listeners_registered = False
 
@@ -163,6 +166,8 @@ class IBProvider(BrokerProvider):
             self._ib.orderStatusEvent += self._on_order_status
         if hasattr(self._ib, "execDetailsEvent"):
             self._ib.execDetailsEvent += self._on_exec_details
+        if hasattr(self._ib, "errorEvent"):
+            self._ib.errorEvent += self._on_error
         self._listeners_registered = True
 
     def _schedule_reconnect(self) -> None:
@@ -219,6 +224,16 @@ class IBProvider(BrokerProvider):
         }
         asyncio.create_task(self._event_cb(Event(topic=EventTopic.FILLS, payload=payload)))
 
+    def _on_error(self, *args: Any) -> None:
+        if len(args) < 3:
+            return
+        try:
+            error_code = int(args[1])
+        except Exception:
+            return
+        if error_code in MARKET_DATA_BLOCK_ERROR_CODES:
+            self._last_market_data_block_at = datetime.now(UTC)
+
     async def _log_connection(self, event: str, details: dict[str, Any]) -> None:
         logger.info("connection_event=%s details=%s", event, details)
         if self._audit:
@@ -272,25 +287,50 @@ class IBProvider(BrokerProvider):
                 # Some symbols qualify directly via reqTickers.
                 pass
 
-            tickers = await self._ib.reqTickersAsync(*contracts)
-            out: list[Quote] = []
-            for ticker in tickers:
-                ts = getattr(ticker, "time", None) or datetime.now(UTC)
-                out.append(
-                    Quote(
-                        symbol=ticker.contract.symbol,
-                        bid=_to_float_or_none(getattr(ticker, "bid", None)),
-                        ask=_to_float_or_none(getattr(ticker, "ask", None)),
-                        last=_to_float_or_none(getattr(ticker, "last", None)),
-                        volume=_to_float_or_none(getattr(ticker, "volume", None)),
-                        timestamp=ts,
-                        exchange=getattr(ticker.contract, "exchange", None),
-                        currency=getattr(ticker.contract, "currency", "USD") or "USD",
-                    )
-                )
+            out = await self._quote_contracts(contracts)
+            missing_symbols = [quote.symbol for quote in out if _quote_is_empty(quote)]
+            should_try_delayed = bool(missing_symbols) and (
+                len(missing_symbols) == len(out) or self._market_data_blocked_recently()
+            )
+
+            if should_try_delayed:
+                by_symbol: dict[str, Any] = {contract.symbol: contract for contract in contracts}
+                retry_contracts = [by_symbol[sym] for sym in dict.fromkeys(missing_symbols) if sym in by_symbol]
+                delayed_quotes = await self._quote_contracts_delayed(retry_contracts)
+                delayed_by_symbol = {quote.symbol: quote for quote in delayed_quotes if not _quote_is_empty(quote)}
+                out = [delayed_by_symbol.get(quote.symbol, quote) for quote in out]
+
             return out
         except Exception as exc:
             self._raise_mapped_error("quote", exc, suggestion="Confirm market data permissions and symbol validity.")
+
+    def _market_data_blocked_recently(self) -> bool:
+        if self._last_market_data_block_at is None:
+            return False
+        return datetime.now(UTC) - self._last_market_data_block_at <= timedelta(seconds=MARKET_DATA_BLOCK_TTL_SECONDS)
+
+    def _set_market_data_type(self, market_data_type: int) -> None:
+        if self._ib is None or not hasattr(self._ib, "reqMarketDataType"):
+            return
+        try:
+            self._ib.reqMarketDataType(market_data_type)
+        except Exception:
+            logger.debug("failed to set IB market data type=%s", market_data_type, exc_info=True)
+
+    async def _quote_contracts(self, contracts: list[Any]) -> list[Quote]:
+        assert self._ib is not None
+        tickers = await self._ib.reqTickersAsync(*contracts)
+        return [_ticker_to_quote(ticker) for ticker in tickers]
+
+    async def _quote_contracts_delayed(self, contracts: list[Any]) -> list[Quote]:
+        if not contracts:
+            return []
+        self._set_market_data_type(3)  # Delayed
+        try:
+            return await self._quote_contracts(contracts)
+        finally:
+            # Reset default mode to live for future requests.
+            self._set_market_data_type(1)
 
     async def history(self, symbol: str, period: str, bar: str, rth_only: bool) -> list[Bar]:
         try:
@@ -698,6 +738,25 @@ def _read_account_value(by_tag: dict[str, str], tag: str) -> float | None:
             except Exception:
                 return None
     return None
+
+
+def _ticker_to_quote(ticker: Any) -> Quote:
+    ts = getattr(ticker, "time", None) or datetime.now(UTC)
+    contract = getattr(ticker, "contract", None)
+    return Quote(
+        symbol=getattr(contract, "symbol", ""),
+        bid=_to_float_or_none(getattr(ticker, "bid", None)),
+        ask=_to_float_or_none(getattr(ticker, "ask", None)),
+        last=_to_float_or_none(getattr(ticker, "last", None)),
+        volume=_to_float_or_none(getattr(ticker, "volume", None)),
+        timestamp=ts,
+        exchange=getattr(contract, "exchange", None),
+        currency=getattr(contract, "currency", "USD") or "USD",
+    )
+
+
+def _quote_is_empty(quote: Quote) -> bool:
+    return quote.bid is None and quote.ask is None and quote.last is None and quote.volume is None
 
 
 def _suggestion_for_error_code(code: ErrorCode) -> str | None:
