@@ -45,6 +45,7 @@ class OptionType(str, Enum):
 
 
 WATCH_FIELDS = {"symbol", "bid", "ask", "last", "volume", "timestamp", "exchange", "currency"}
+QUOTE_VALUE_FIELDS = ("bid", "ask", "last", "volume")
 
 
 @app.command("quote", help="Snapshot quote(s) for one or more symbols.")
@@ -59,7 +60,10 @@ def quote(
     state = get_state(ctx)
     try:
         data = run_async(daemon_request(state, "quote.snapshot", {"symbols": symbols}))
-        print_output(data.get("quotes", []), json_output=state.json_output, title="Quotes")
+        quotes = data.get("quotes", [])
+        if isinstance(quotes, list):
+            _warn_on_empty_quotes(quotes, provider=state.config.provider)
+        print_output(quotes, json_output=state.json_output, title="Quotes")
     except BrokerError as exc:
         handle_error(exc, json_output=state.json_output)
 
@@ -165,3 +169,35 @@ def _parse_interval(raw: str) -> float:
 def _parse_fields(raw: str) -> list[str]:
     chosen = [item.lower() for item in parse_csv_items(raw, field_name="fields")]
     return validate_allowed_values(chosen, allowed=WATCH_FIELDS, field_name="fields")
+
+
+def _warn_on_empty_quotes(quotes: list[dict[str, object]], *, provider: str) -> None:
+    symbols = _symbols_with_empty_quotes(quotes)
+    if not symbols:
+        return
+
+    symbol_text = ", ".join(symbols)
+    if provider == "ib":
+        typer.echo(
+            f"No quote data returned for {symbol_text} (bid/ask/last/volume are null). "
+            'This often means missing IBKR API market-data permissions. Check '
+            '~/.local/state/broker/broker.log for "Error 10089", then enable the required '
+            "market-data subscription or delayed data in IBKR.",
+            err=True,
+        )
+        return
+
+    typer.echo(
+        f"No quote data returned for {symbol_text} (bid/ask/last/volume are null). "
+        "Verify symbol validity and provider market-data permissions.",
+        err=True,
+    )
+
+
+def _symbols_with_empty_quotes(quotes: list[dict[str, object]]) -> list[str]:
+    symbols: list[str] = []
+    for quote in quotes:
+        if all(quote.get(field) is None for field in QUOTE_VALUE_FIELDS):
+            symbol = str(quote.get("symbol") or "?")
+            symbols.append(symbol)
+    return list(dict.fromkeys(symbols))

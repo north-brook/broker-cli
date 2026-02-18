@@ -192,6 +192,32 @@ def test_watch_is_usable(monkeypatch: pytest.MonkeyPatch, runner: CliRunner, rpc
     assert rpc[-1][0] == "quote.snapshot"
 
 
+def test_quote_warns_when_fields_are_all_null(monkeypatch: pytest.MonkeyPatch, runner: CliRunner) -> None:
+    async def fake_daemon_request(_: Any, command: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        _ = params
+        if command == "quote.snapshot":
+            return {"quotes": [{"symbol": "AAPL", "bid": None, "ask": None, "last": None, "volume": None}]}
+        return {"ok": True}
+
+    monkeypatch.setattr(market, "daemon_request", fake_daemon_request)
+
+    result = runner.invoke(app, ["quote", "AAPL"])
+    assert result.exit_code == 0
+    combined = _strip_ansi(result.stdout + getattr(result, "stderr", ""))
+    assert "No quote data returned for AAPL" in combined
+    assert "Error 10089" in combined
+
+
+def test_quote_does_not_warn_when_last_price_is_present(
+    runner: CliRunner, rpc: list[tuple[str, dict[str, Any]]]
+) -> None:
+    _ = rpc
+    result = runner.invoke(app, ["quote", "AAPL"])
+    assert result.exit_code == 0
+    combined = _strip_ansi(result.stdout + getattr(result, "stderr", ""))
+    assert "No quote data returned for AAPL" not in combined
+
+
 def test_daemon_start_uses_start_helper(monkeypatch: pytest.MonkeyPatch, runner: CliRunner) -> None:
     captured: dict[str, Any] = {}
 
