@@ -47,6 +47,18 @@ async def test_dispatch_rejects_invalid_chain_type(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_dispatch_rejects_invalid_quote_intent(tmp_path) -> None:
+    server = DaemonServer(_test_config(tmp_path))
+    req = Request(command="quote.snapshot", params={"symbols": ["AAPL"], "intent": "invalid"})
+
+    with pytest.raises(BrokerError) as exc:
+        await server._dispatch(req)  # noqa: SLF001
+
+    assert exc.value.code == ErrorCode.INVALID_ARGS
+    assert "quote intent" in exc.value.message
+
+
+@pytest.mark.asyncio
 async def test_dispatch_rejects_invalid_order_status_filter(tmp_path) -> None:
     server = DaemonServer(_test_config(tmp_path))
     req = Request(command="orders.list", params={"status": "pending"})
@@ -56,3 +68,14 @@ async def test_dispatch_rejects_invalid_order_status_filter(tmp_path) -> None:
 
     assert exc.value.code == ErrorCode.INVALID_ARGS
     assert "unsupported orders status" in exc.value.message
+
+
+@pytest.mark.asyncio
+async def test_dispatch_market_capabilities_returns_payload(tmp_path) -> None:
+    server = DaemonServer(_test_config(tmp_path))
+    req = Request(command="market.capabilities", params={"symbols": ["AAPL"], "refresh": False})
+
+    data = await server._dispatch(req)  # noqa: SLF001
+    capabilities = data.get("capabilities", {})
+    assert capabilities.get("provider")
+    assert "supports" in capabilities

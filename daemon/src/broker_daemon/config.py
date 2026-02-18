@@ -79,6 +79,45 @@ class RuntimeConfig(BaseModel):
     request_timeout_seconds: int = 15
 
 
+class MarketDataConfig(BaseModel):
+    quote_intent_default: str = "best_effort"
+    allow_delayed_fallback: bool = True
+    allow_delayed_frozen_fallback: bool = True
+    allow_history_last_fallback: bool = True
+    capability_ttl_seconds: int = 300
+    probe_symbols: list[str] = Field(default_factory=lambda: ["AAPL"])
+
+    @field_validator("quote_intent_default")
+    @classmethod
+    def _validate_quote_intent_default(cls, value: str) -> str:
+        quote_intent = value.strip().lower()
+        if quote_intent not in {"best_effort", "top_of_book", "last_only"}:
+            raise ValueError("quote_intent_default must be best_effort, top_of_book, or last_only")
+        return quote_intent
+
+    @field_validator("capability_ttl_seconds")
+    @classmethod
+    def _validate_capability_ttl_seconds(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("capability_ttl_seconds must be >= 1")
+        return value
+
+    @field_validator("probe_symbols", mode="before")
+    @classmethod
+    def _normalize_probe_symbols(cls, value: Any) -> list[str]:
+        if value is None:
+            return ["AAPL"]
+        raw: list[str]
+        if isinstance(value, str):
+            raw = [part.strip() for part in value.split(",") if part.strip()]
+        elif isinstance(value, list):
+            raw = [str(part).strip() for part in value if str(part).strip()]
+        else:
+            return ["AAPL"]
+        normalized = [symbol.upper() for symbol in raw]
+        return normalized or ["AAPL"]
+
+
 class AppConfig(BaseModel):
     provider: str = "ib"
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
@@ -88,6 +127,7 @@ class AppConfig(BaseModel):
     agent: AgentConfig = Field(default_factory=AgentConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
+    market_data: MarketDataConfig = Field(default_factory=MarketDataConfig)
 
     @field_validator("provider")
     @classmethod
@@ -152,7 +192,7 @@ def _read_broker_json(path: Path) -> dict[str, Any]:
 def _extract_broker_config(data: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {}
     raw_broker = data.get("broker")
-    sections = {"gateway", "etrade", "risk", "logging", "agent", "output", "runtime"}
+    sections = {"gateway", "etrade", "risk", "logging", "agent", "output", "runtime", "market_data"}
 
     if isinstance(raw_broker, dict):
         provider = raw_broker.get("provider")
@@ -175,7 +215,7 @@ def _extract_broker_config(data: dict[str, Any]) -> dict[str, Any]:
 
 def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
     result = dict(data)
-    sections = {"gateway", "etrade", "risk", "logging", "agent", "output", "runtime"}
+    sections = {"gateway", "etrade", "risk", "logging", "agent", "output", "runtime", "market_data"}
     for key, raw in os.environ.items():
         if key == "BROKER_PROVIDER":
             result["provider"] = raw.strip()
@@ -186,9 +226,13 @@ def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
         if not tokens:
             continue
         section = tokens[0]
-        if section not in sections or len(tokens) == 1:
+        field_tokens = tokens[1:]
+        if len(tokens) >= 2 and f"{tokens[0]}_{tokens[1]}" in sections:
+            section = f"{tokens[0]}_{tokens[1]}"
+            field_tokens = tokens[2:]
+        if section not in sections or not field_tokens:
             continue
-        field = "_".join(tokens[1:])
+        field = "_".join(field_tokens)
         section_obj = dict(result.get(section, {}))
         section_obj[field] = _coerce_env_value(raw)
         result[section] = section_obj

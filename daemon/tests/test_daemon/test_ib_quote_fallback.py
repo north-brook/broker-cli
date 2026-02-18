@@ -110,6 +110,9 @@ async def test_quote_retries_with_delayed_data_when_live_snapshot_empty(fake_ib_
     ib = fake_ib_module.instances[-1]
     assert quotes[0].symbol == "AAPL"
     assert quotes[0].last == pytest.approx(185.22)
+    assert quotes[0].meta is not None
+    assert quotes[0].meta.source == "delayed"
+    assert quotes[0].meta.fallback_used is True
     assert ib.req_tickers_calls == [("AAPL",), ("AAPL",)]
     assert ib.market_data_type_calls == [3, 1]
 
@@ -125,6 +128,8 @@ async def test_quote_keeps_live_data_when_available(fake_ib_module: type[_FakeIB
 
     ib = fake_ib_module.instances[-1]
     assert quotes[0].last == pytest.approx(190.01)
+    assert quotes[0].meta is not None
+    assert quotes[0].meta.source == "live"
     assert ib.req_tickers_calls == [("AAPL",)]
     assert all(contract.exchange == "SMART" for contract in ib.req_ticker_contracts[0])
     assert ib.market_data_type_calls == []
@@ -145,5 +150,25 @@ async def test_quote_retries_missing_symbols_after_recent_market_data_block(fake
     by_symbol = {quote.symbol: quote for quote in quotes}
     assert by_symbol["AAPL"].last == pytest.approx(190.01)
     assert by_symbol["MSFT"].last == pytest.approx(410.52)
+    assert by_symbol["AAPL"].meta is not None
+    assert by_symbol["MSFT"].meta is not None
+    assert by_symbol["AAPL"].meta.source == "live"
+    assert by_symbol["MSFT"].meta.source == "delayed"
     assert ib.req_tickers_calls == [("AAPL", "MSFT"), ("MSFT",)]
     assert ib.market_data_type_calls == [3, 1]
+
+
+@pytest.mark.asyncio
+async def test_quote_capabilities_reflect_observed_fields(fake_ib_module: type[_FakeIB]) -> None:
+    fake_ib_module.live_by_symbol = {"AAPL": 190.01}
+
+    provider = IBProvider(GatewayConfig())
+    await provider.quote(["AAPL"])
+    capabilities = await provider.quote_capabilities(["AAPL"], refresh=False)
+    await provider.stop()
+
+    assert capabilities.provider == "ib"
+    assert capabilities.supports["live"] is True
+    assert capabilities.symbols["AAPL"].fields.last is True
+    assert capabilities.symbols["AAPL"].fields.bid is True
+    assert capabilities.symbols["AAPL"].fields.ask is True

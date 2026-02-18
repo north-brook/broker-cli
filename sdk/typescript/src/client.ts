@@ -32,6 +32,7 @@ import type {
   ExposureGroupBy,
   FillsListResponse,
   HistoryPeriod,
+  MarketCapabilitiesResponse,
   MarketHistoryResponse,
   OptionType,
   OptionChainResponse,
@@ -47,6 +48,7 @@ import type {
   PortfolioExposureResponse,
   PortfolioPnLResponse,
   PortfolioPositionsResponse,
+  QuoteIntent,
   QuoteSnapshotResponse,
   RiskCheckInput,
   RiskCheckResult,
@@ -149,6 +151,21 @@ export class Client {
 
   async quote(...symbols: string[]): Promise<QuoteSnapshotResponse> {
     return this.request("quote.snapshot", { symbols });
+  }
+
+  async quoteSnapshot(
+    symbols: string[],
+    options: { force?: boolean; intent?: QuoteIntent } = {}
+  ): Promise<QuoteSnapshotResponse> {
+    return this.request("quote.snapshot", { symbols, ...options });
+  }
+
+  async marketCapabilities(symbols?: string[], refresh = false): Promise<MarketCapabilitiesResponse> {
+    const params: CommandParams<"market.capabilities"> = { refresh };
+    if (symbols && symbols.length > 0) {
+      params.symbols = symbols;
+    }
+    return this.request("market.capabilities", params);
   }
 
   async history(symbol: string, period: HistoryPeriod, bar: BarSize, rthOnly = false): Promise<MarketHistoryResponse> {

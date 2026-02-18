@@ -15,6 +15,7 @@ import type {
   FillsListResponse,
   HistoryPeriod,
   MarketHistoryResponse,
+  MarketCapabilitiesResponse,
   OptionType,
   OptionChainResponse,
   OrderBracketResponse,
@@ -30,6 +31,7 @@ import type {
   PortfolioPnLResponse,
   PortfolioPositionsResponse,
   QuoteSnapshotResponse,
+  QuoteIntent,
   RiskParam,
   RiskCheckResult,
   RiskHaltResponse,
@@ -48,7 +50,8 @@ export interface CommandSpec<Params, Result> {
 export interface CommandMap {
   "daemon.status": CommandSpec<Record<string, never>, DaemonStatusResponse>;
   "daemon.stop": CommandSpec<Record<string, never>, DaemonStopResponse>;
-  "quote.snapshot": CommandSpec<{ symbols: string[]; force?: boolean }, QuoteSnapshotResponse>;
+  "quote.snapshot": CommandSpec<{ symbols: string[]; force?: boolean; intent?: QuoteIntent }, QuoteSnapshotResponse>;
+  "market.capabilities": CommandSpec<{ symbols?: string[]; refresh?: boolean }, MarketCapabilitiesResponse>;
   "market.history": CommandSpec<
     {
       symbol: string;

@@ -21,6 +21,7 @@ from broker_sdk.types import (
     OptionType,
     OrderSide,
     OrderStatusFilter,
+    QuoteIntent,
     RiskParam,
     TimeInForce,
 )
@@ -118,6 +119,31 @@ class Client:
         """Return snapshot quotes for one or more symbols."""
         data = await self._request("quote.snapshot", {"symbols": list(symbols)})
         return data.get("quotes", [])
+
+    async def quote_snapshot(
+        self,
+        symbols: list[str],
+        *,
+        force: bool = False,
+        intent: QuoteIntent | None = None,
+    ) -> dict[str, Any]:
+        """Return full quote snapshot payload (quotes + intent/capabilities metadata)."""
+        params: dict[str, Any] = {"symbols": symbols, "force": force}
+        if intent is not None:
+            params["intent"] = intent
+        return await self._request("quote.snapshot", params)
+
+    async def market_capabilities(
+        self,
+        symbols: list[str] | None = None,
+        *,
+        refresh: bool = False,
+    ) -> dict[str, Any]:
+        """Return detected provider market-data capabilities."""
+        params: dict[str, Any] = {"refresh": refresh}
+        if symbols:
+            params["symbols"] = symbols
+        return await self._request("market.capabilities", params)
 
     async def history(self, symbol: str, period: HistoryPeriod, bar: BarSize, rth_only: bool = False) -> list[dict[str, Any]]:
         data = await self._request(

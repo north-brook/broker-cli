@@ -22,6 +22,7 @@ from broker_daemon.daemon.market_data import MarketDataService
 from broker_daemon.daemon.order_manager import OrderManager
 from broker_daemon.exceptions import ErrorCode, BrokerError
 from broker_daemon.models.events import Event, EventTopic
+from broker_daemon.models.market import QUOTE_INTENTS
 from broker_daemon.models.orders import FillRecord, OrderRequest
 from broker_daemon.protocol import ErrorResponse, EventEnvelope, Request, Response, decode_request, encode_model, frame_payload, read_framed
 from broker_daemon.providers import IBProvider
@@ -34,6 +35,7 @@ KNOWN_COMMANDS: tuple[str, ...] = (
     "daemon.status",
     "daemon.stop",
     "quote.snapshot",
+    "market.capabilities",
     "market.history",
     "market.chain",
     "portfolio.positions",
@@ -88,7 +90,7 @@ class DaemonServer:
         else:
             self._provider = IBProvider(cfg.gateway, audit=self._audit, event_cb=self._on_broker_event)
 
-        self._market_data = MarketDataService(self._provider)
+        self._market_data = MarketDataService(self._provider, settings=cfg.market_data)
         self._orders = OrderManager(
             provider=self._provider,
             risk=self._risk,
@@ -270,8 +272,33 @@ class DaemonServer:
                     "symbols is required and must contain at least one item",
                     suggestion="Example: broker quote AAPL MSFT",
                 )
-            quotes = await self._market_data.quote(symbols, force_refresh=bool(p.get("force", False)))
-            return {"quotes": [q.model_dump(mode="json") for q in quotes]}
+            intent = str(p.get("intent", self._cfg.market_data.quote_intent_default)).lower()
+            if intent not in QUOTE_INTENTS:
+                raise BrokerError(
+                    ErrorCode.INVALID_ARGS,
+                    f"unsupported quote intent '{intent}'",
+                    details={"valid_intents": list(QUOTE_INTENTS)},
+                    suggestion="Use intent best_effort, top_of_book, or last_only.",
+                )
+            quotes = await self._market_data.quote(
+                symbols,
+                force_refresh=bool(p.get("force", False)),
+                intent=intent,
+            )
+            provider_capabilities = await self._market_data.quote_capabilities(symbols, refresh=False)
+            return {
+                "quotes": [q.model_dump(mode="json") for q in quotes],
+                "intent": intent,
+                "provider_capabilities": provider_capabilities.model_dump(mode="json"),
+            }
+
+        if cmd == "market.capabilities":
+            symbols = [str(s).upper() for s in p.get("symbols", []) if str(s).strip()]
+            capabilities = await self._market_data.quote_capabilities(
+                symbols if symbols else None,
+                refresh=bool(p.get("refresh", False)),
+            )
+            return {"capabilities": capabilities.model_dump(mode="json")}
 
         if cmd == "market.history":
             self._require_capability("history", "historical bars")
@@ -479,6 +506,7 @@ class DaemonServer:
         return {
             "uptime_seconds": round(time.monotonic() - self._start_monotonic, 3),
             "connection": status.model_dump(mode="json"),
+            "provider_capabilities": dict(self._provider.capabilities),
             "risk_halted": self._risk.halted,
             "time_sync_delta_ms": None,
             "socket": str(self.socket_path),

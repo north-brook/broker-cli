@@ -19,7 +19,16 @@ from broker_daemon.audit.logger import AuditLogger
 from broker_daemon.config import ETradeConfig
 from broker_daemon.exceptions import ErrorCode, BrokerError
 from broker_daemon.models.events import Event, EventTopic
-from broker_daemon.models.market import OptionChain, OptionChainEntry, Quote
+from broker_daemon.models.market import (
+    OptionChain,
+    OptionChainEntry,
+    ProviderQuoteCapabilities,
+    Quote,
+    QuoteCapabilitySnapshot,
+    QuoteFieldAvailability,
+    QuoteIntent,
+    QuoteMeta,
+)
 from broker_daemon.models.orders import FillRecord, OrderRequest
 from broker_daemon.models.portfolio import Balance, ExposureEntry, PnLSummary, Position
 from broker_daemon.providers.base import BrokerProvider, ConnectionStatus
@@ -192,6 +201,9 @@ class ETradeProvider(BrokerProvider):
             "streaming": False,
             "cancel_all": True,
             "persistent_auth": True,
+            "quote_live": True,
+            "quote_delayed": False,
+            "quote_delayed_frozen": False,
         }
 
     async def start(self) -> None:
@@ -269,7 +281,8 @@ class ETradeProvider(BrokerProvider):
     def is_connected(self) -> bool:
         return bool(self._client and self._token_valid and self._oauth_token and self._oauth_token_secret)
 
-    async def quote(self, symbols: list[str]) -> list[Quote]:
+    async def quote(self, symbols: list[str], *, intent: QuoteIntent = "best_effort") -> list[Quote]:
+        _ = intent
         if not symbols:
             return []
 
@@ -298,9 +311,39 @@ class ETradeProvider(BrokerProvider):
                         timestamp=datetime.now(UTC),
                         exchange=str(product.get("exchange") or "") or None,
                         currency=str(product.get("currency") or "USD") or "USD",
+                        meta=QuoteMeta(source="live"),
                     )
                 )
+                if out[-1].meta is not None:
+                    out[-1].meta.fields = QuoteFieldAvailability(
+                        bid=out[-1].bid is not None,
+                        ask=out[-1].ask is not None,
+                        last=out[-1].last is not None,
+                        volume=out[-1].volume is not None,
+                    )
         return out
+
+    async def quote_capabilities(
+        self,
+        symbols: list[str],
+        *,
+        refresh: bool = False,
+    ) -> ProviderQuoteCapabilities:
+        _ = refresh
+        normalized = [symbol.upper().strip() for symbol in symbols if symbol.strip()]
+        symbol_caps = {
+            symbol: QuoteCapabilitySnapshot(
+                symbol=symbol,
+                fields=QuoteFieldAvailability(bid=True, ask=True, last=True, volume=True),
+                source="live",
+            )
+            for symbol in normalized
+        }
+        return ProviderQuoteCapabilities(
+            provider="etrade",
+            supports={"live": True, "delayed": False, "delayed_frozen": False},
+            symbols=symbol_caps,
+        )
 
     async def option_chain(
         self,

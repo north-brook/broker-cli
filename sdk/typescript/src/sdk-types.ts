@@ -5,6 +5,7 @@ export const TIME_IN_FORCE_VALUES = ["DAY", "GTC", "IOC"] as const;
 export const HISTORY_PERIODS = ["1d", "5d", "30d", "90d", "1y"] as const;
 export const BAR_SIZES = ["1m", "5m", "15m", "1h", "1d"] as const;
 export const OPTION_TYPES = ["call", "put"] as const;
+export const QUOTE_INTENTS = ["best_effort", "top_of_book", "last_only"] as const;
 export const ORDER_STATUS_FILTERS = ["active", "filled", "cancelled", "all"] as const;
 export const EXPOSURE_GROUPS = ["sector", "asset_class", "currency", "symbol"] as const;
 export const EVENT_TOPICS = ["orders", "fills", "positions", "pnl", "risk", "connection"] as const;
@@ -28,6 +29,7 @@ export type TimeInForce = (typeof TIME_IN_FORCE_VALUES)[number];
 export type HistoryPeriod = (typeof HISTORY_PERIODS)[number];
 export type BarSize = (typeof BAR_SIZES)[number];
 export type OptionType = (typeof OPTION_TYPES)[number];
+export type QuoteIntent = (typeof QUOTE_INTENTS)[number];
 export type OrderStatusFilter = (typeof ORDER_STATUS_FILTERS)[number];
 export type ExposureGroupBy = (typeof EXPOSURE_GROUPS)[number];
 export type EventTopic = (typeof EVENT_TOPICS)[number];
@@ -44,6 +46,36 @@ export interface Quote {
   timestamp: string;
   exchange: string | null;
   currency: string;
+  meta?: QuoteMeta | null;
+}
+
+export interface QuoteFieldAvailability {
+  bid: boolean;
+  ask: boolean;
+  last: boolean;
+  volume: boolean;
+}
+
+export interface QuoteMeta {
+  source: string;
+  market_data_type: number | null;
+  fallback_used: boolean;
+  fields: QuoteFieldAvailability;
+}
+
+export interface QuoteCapabilitySnapshot {
+  symbol: string;
+  fields: QuoteFieldAvailability;
+  source: string | null;
+  market_data_type: number | null;
+  updated_at: string | null;
+}
+
+export interface ProviderQuoteCapabilities {
+  provider: string;
+  supports: Record<string, boolean>;
+  symbols: Record<string, QuoteCapabilitySnapshot>;
+  updated_at: string;
 }
 
 export interface Bar {
@@ -181,6 +213,7 @@ export interface DaemonStatusResponse {
     account_id: string | null;
     last_error: string | null;
   };
+  provider_capabilities: Record<string, boolean>;
   risk_halted: boolean;
   time_sync_delta_ms: number | null;
   socket: string;
@@ -192,6 +225,12 @@ export interface DaemonStopResponse {
 
 export interface QuoteSnapshotResponse {
   quotes: Quote[];
+  intent?: QuoteIntent;
+  provider_capabilities?: ProviderQuoteCapabilities;
+}
+
+export interface MarketCapabilitiesResponse {
+  capabilities: ProviderQuoteCapabilities;
 }
 
 export interface MarketHistoryResponse {

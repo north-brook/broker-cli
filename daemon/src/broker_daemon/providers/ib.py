@@ -11,7 +11,17 @@ from broker_daemon.audit.logger import AuditLogger
 from broker_daemon.config import GatewayConfig
 from broker_daemon.exceptions import ErrorCode, BrokerError
 from broker_daemon.models.events import Event, EventTopic
-from broker_daemon.models.market import Bar, OptionChain, OptionChainEntry, Quote
+from broker_daemon.models.market import (
+    Bar,
+    OptionChain,
+    OptionChainEntry,
+    ProviderQuoteCapabilities,
+    Quote,
+    QuoteCapabilitySnapshot,
+    QuoteFieldAvailability,
+    QuoteIntent,
+    QuoteMeta,
+)
 from broker_daemon.models.orders import FillRecord, OrderRequest
 from broker_daemon.models.portfolio import Balance, ExposureEntry, PnLSummary, Position
 from broker_daemon.providers.base import BrokerProvider, ConnectionStatus
@@ -21,6 +31,8 @@ logger = logging.getLogger(__name__)
 CONNECTIVITY_ERROR_TOKENS = ("not connected", "disconnect", "connection", "socket", "transport")
 VALID_EXPOSURE_GROUPS = {"symbol", "currency", "sector", "asset_class"}
 MARKET_DATA_BLOCK_ERROR_CODES = {10089, 10197}
+MARKET_DATA_LIVE_BLOCK_ERROR_CODES = {10089, 10197, 354}
+MARKET_DATA_DELAYED_BLOCK_ERROR_CODES = {10186}
 MARKET_DATA_BLOCK_TTL_SECONDS = 30
 QUOTE_EXCHANGE = "SMART"
 
@@ -43,6 +55,13 @@ class IBProvider(BrokerProvider):
         self._connected_at: datetime | None = None
         self._last_error: str | None = None
         self._last_market_data_block_at: datetime | None = None
+        self._quote_caps_by_symbol: dict[str, QuoteCapabilitySnapshot] = {}
+        self._quote_caps_updated_at: datetime | None = None
+        self._quote_source_support: dict[str, bool] = {
+            "live": True,
+            "delayed": True,
+            "delayed_frozen": True,
+        }
         self._reconnect_task: asyncio.Task[None] | None = None
         self._listeners_registered = False
 
@@ -56,6 +75,9 @@ class IBProvider(BrokerProvider):
             "streaming": True,
             "cancel_all": True,
             "persistent_auth": False,
+            "quote_live": True,
+            "quote_delayed": True,
+            "quote_delayed_frozen": True,
         }
 
     async def start(self) -> None:
@@ -234,6 +256,11 @@ class IBProvider(BrokerProvider):
             return
         if error_code in MARKET_DATA_BLOCK_ERROR_CODES:
             self._last_market_data_block_at = datetime.now(UTC)
+        if error_code in MARKET_DATA_LIVE_BLOCK_ERROR_CODES:
+            self._quote_source_support["live"] = False
+        if error_code in MARKET_DATA_DELAYED_BLOCK_ERROR_CODES:
+            self._quote_source_support["delayed"] = False
+            self._quote_source_support["delayed_frozen"] = False
 
     async def _log_connection(self, event: str, details: dict[str, Any]) -> None:
         logger.info("connection_event=%s details=%s", event, details)
@@ -274,7 +301,7 @@ class IBProvider(BrokerProvider):
             suggestion=suggestion or _suggestion_for_error_code(code),
         ) from exc
 
-    async def quote(self, symbols: list[str]) -> list[Quote]:
+    async def quote(self, symbols: list[str], *, intent: QuoteIntent = "best_effort") -> list[Quote]:
         try:
             await self.ensure_connected()
             assert self._ib is not None
@@ -288,22 +315,103 @@ class IBProvider(BrokerProvider):
                 # Some symbols qualify directly via reqTickers.
                 pass
 
-            out = await self._quote_contracts(contracts)
-            missing_symbols = [quote.symbol for quote in out if _quote_is_empty(quote)]
-            should_try_delayed = bool(missing_symbols) and (
-                len(missing_symbols) == len(out) or self._market_data_blocked_recently()
-            )
+            out = await self._quote_contracts(contracts, market_data_type=1, source="live", fallback_used=False)
+            missing_symbols = [quote.symbol for quote in out if _quote_missing_for_intent(quote, intent)]
 
-            if should_try_delayed:
+            if missing_symbols:
                 by_symbol: dict[str, Any] = {contract.symbol: contract for contract in contracts}
                 retry_contracts = [by_symbol[sym] for sym in dict.fromkeys(missing_symbols) if sym in by_symbol]
-                delayed_quotes = await self._quote_contracts_delayed(retry_contracts)
-                delayed_by_symbol = {quote.symbol: quote for quote in delayed_quotes if not _quote_is_empty(quote)}
-                out = [delayed_by_symbol.get(quote.symbol, quote) for quote in out]
+                should_try_delayed = bool(retry_contracts) and (
+                    len(missing_symbols) == len(out) or self._market_data_blocked_recently() or intent != "top_of_book"
+                )
+                if should_try_delayed:
+                    out = await self._merge_quote_fallback(
+                        out,
+                        retry_contracts=retry_contracts,
+                        market_data_type=3,
+                        source="delayed",
+                        intent=intent,
+                    )
+
+            still_missing = [quote.symbol for quote in out if _quote_missing_for_intent(quote, intent)]
+            if still_missing and intent in {"best_effort", "last_only"}:
+                by_symbol = {contract.symbol: contract for contract in contracts}
+                retry_contracts = [by_symbol[sym] for sym in dict.fromkeys(still_missing) if sym in by_symbol]
+                if retry_contracts:
+                    out = await self._merge_quote_fallback(
+                        out,
+                        retry_contracts=retry_contracts,
+                        market_data_type=4,
+                        source="delayed_frozen",
+                        intent=intent,
+                    )
+
+            self._record_quote_capabilities(out)
 
             return out
         except Exception as exc:
             self._raise_mapped_error("quote", exc, suggestion="Confirm market data permissions and symbol validity.")
+
+    async def quote_capabilities(
+        self,
+        symbols: list[str],
+        *,
+        refresh: bool = False,
+    ) -> ProviderQuoteCapabilities:
+        normalized = [symbol.upper().strip() for symbol in symbols if symbol.strip()]
+        if refresh and normalized:
+            try:
+                await self.quote(normalized, intent="best_effort")
+            except Exception:
+                logger.debug("capability probe quote refresh failed", exc_info=True)
+
+        symbol_caps: dict[str, QuoteCapabilitySnapshot] = {}
+        for symbol in normalized:
+            if symbol in self._quote_caps_by_symbol:
+                symbol_caps[symbol] = self._quote_caps_by_symbol[symbol]
+            else:
+                symbol_caps[symbol] = QuoteCapabilitySnapshot(symbol=symbol)
+
+        return ProviderQuoteCapabilities(
+            provider="ib",
+            supports={
+                "live": self._quote_source_support["live"],
+                "delayed": self._quote_source_support["delayed"],
+                "delayed_frozen": self._quote_source_support["delayed_frozen"],
+            },
+            symbols=symbol_caps,
+            updated_at=self._quote_caps_updated_at or datetime.now(UTC),
+        )
+
+    def _record_quote_capabilities(self, quotes: list[Quote]) -> None:
+        if not quotes:
+            return
+        now = datetime.now(UTC)
+        for quote in quotes:
+            symbol = quote.symbol.upper()
+            observed = _quote_fields(quote)
+            previous = self._quote_caps_by_symbol.get(symbol)
+            if previous is None:
+                merged = observed
+            else:
+                merged = QuoteFieldAvailability(
+                    bid=previous.fields.bid or observed.bid,
+                    ask=previous.fields.ask or observed.ask,
+                    last=previous.fields.last or observed.last,
+                    volume=previous.fields.volume or observed.volume,
+                )
+
+            meta = quote.meta
+            source = meta.source if meta and meta.source else (previous.source if previous else None)
+            market_data_type = meta.market_data_type if meta else (previous.market_data_type if previous else None)
+            self._quote_caps_by_symbol[symbol] = QuoteCapabilitySnapshot(
+                symbol=symbol,
+                fields=merged,
+                source=source,
+                market_data_type=market_data_type,
+                updated_at=now,
+            )
+        self._quote_caps_updated_at = now
 
     def _market_data_blocked_recently(self) -> bool:
         if self._last_market_data_block_at is None:
@@ -318,20 +426,72 @@ class IBProvider(BrokerProvider):
         except Exception:
             logger.debug("failed to set IB market data type=%s", market_data_type, exc_info=True)
 
-    async def _quote_contracts(self, contracts: list[Any]) -> list[Quote]:
-        assert self._ib is not None
-        tickers = await self._ib.reqTickersAsync(*contracts)
-        return [_ticker_to_quote(ticker) for ticker in tickers]
-
-    async def _quote_contracts_delayed(self, contracts: list[Any]) -> list[Quote]:
+    async def _quote_contracts(
+        self,
+        contracts: list[Any],
+        *,
+        market_data_type: int,
+        source: str,
+        fallback_used: bool,
+    ) -> list[Quote]:
         if not contracts:
             return []
-        self._set_market_data_type(3)  # Delayed
+        assert self._ib is not None
+        if market_data_type != 1:
+            self._set_market_data_type(market_data_type)
         try:
-            return await self._quote_contracts(contracts)
+            tickers = await self._ib.reqTickersAsync(*contracts)
+            quotes = [
+                _ticker_to_quote(
+                    ticker,
+                    source=source,
+                    market_data_type=market_data_type,
+                    fallback_used=fallback_used,
+                )
+                for ticker in tickers
+            ]
+            if any(not _quote_is_empty(quote) for quote in quotes):
+                self._quote_source_support[source] = True
+            self._record_quote_capabilities(quotes)
+            return quotes
         finally:
-            # Reset default mode to live for future requests.
-            self._set_market_data_type(1)
+            if market_data_type != 1:
+                # Reset default mode to live for future requests.
+                self._set_market_data_type(1)
+
+    async def _merge_quote_fallback(
+        self,
+        base_quotes: list[Quote],
+        *,
+        retry_contracts: list[Any],
+        market_data_type: int,
+        source: str,
+        intent: QuoteIntent,
+    ) -> list[Quote]:
+        try:
+            fallback_quotes = await self._quote_contracts(
+                retry_contracts,
+                market_data_type=market_data_type,
+                source=source,
+                fallback_used=True,
+            )
+        except Exception:
+            logger.debug(
+                "quote fallback failed source=%s market_data_type=%s",
+                source,
+                market_data_type,
+                exc_info=True,
+            )
+            if source == "delayed":
+                self._quote_source_support["delayed"] = False
+            if source == "delayed_frozen":
+                self._quote_source_support["delayed_frozen"] = False
+            return base_quotes
+
+        fallback_by_symbol = {
+            quote.symbol: quote for quote in fallback_quotes if not _quote_missing_for_intent(quote, intent)
+        }
+        return [fallback_by_symbol.get(quote.symbol, quote) for quote in base_quotes]
 
     async def history(self, symbol: str, period: str, bar: str, rth_only: bool) -> list[Bar]:
         try:
@@ -741,10 +901,16 @@ def _read_account_value(by_tag: dict[str, str], tag: str) -> float | None:
     return None
 
 
-def _ticker_to_quote(ticker: Any) -> Quote:
+def _ticker_to_quote(
+    ticker: Any,
+    *,
+    source: str,
+    market_data_type: int,
+    fallback_used: bool,
+) -> Quote:
     ts = getattr(ticker, "time", None) or datetime.now(UTC)
     contract = getattr(ticker, "contract", None)
-    return Quote(
+    quote = Quote(
         symbol=getattr(contract, "symbol", ""),
         bid=_to_float_or_none(getattr(ticker, "bid", None)),
         ask=_to_float_or_none(getattr(ticker, "ask", None)),
@@ -753,11 +919,37 @@ def _ticker_to_quote(ticker: Any) -> Quote:
         timestamp=ts,
         exchange=getattr(contract, "exchange", None),
         currency=getattr(contract, "currency", "USD") or "USD",
+        meta=QuoteMeta(
+            source=source,
+            market_data_type=market_data_type,
+            fallback_used=fallback_used,
+        ),
+    )
+    if quote.meta is not None:
+        quote.meta.fields = _quote_fields(quote)
+    return quote
+
+
+def _quote_fields(quote: Quote) -> QuoteFieldAvailability:
+    return QuoteFieldAvailability(
+        bid=quote.bid is not None,
+        ask=quote.ask is not None,
+        last=quote.last is not None,
+        volume=quote.volume is not None,
     )
 
 
 def _quote_is_empty(quote: Quote) -> bool:
     return quote.bid is None and quote.ask is None and quote.last is None and quote.volume is None
+
+
+def _quote_missing_for_intent(quote: Quote, intent: QuoteIntent) -> bool:
+    if intent == "top_of_book":
+        return quote.bid is None or quote.ask is None
+    if intent == "last_only":
+        return quote.last is None
+    # best_effort: prefer last price for most workflows, but still accept full-empty as missing.
+    return quote.last is None or _quote_is_empty(quote)
 
 
 def _suggestion_for_error_code(code: ErrorCode) -> str | None:

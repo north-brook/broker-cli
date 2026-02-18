@@ -44,6 +44,12 @@ class OptionType(str, Enum):
     PUT = "put"
 
 
+class QuoteIntent(str, Enum):
+    BEST_EFFORT = "best_effort"
+    TOP_OF_BOOK = "top_of_book"
+    LAST_ONLY = "last_only"
+
+
 WATCH_FIELDS = {"symbol", "bid", "ask", "last", "volume", "timestamp", "exchange", "currency"}
 QUOTE_VALUE_FIELDS = ("bid", "ask", "last", "volume")
 
@@ -56,13 +62,27 @@ def quote(
         metavar="SYMBOL...",
         help="One or more symbols. Example: AAPL MSFT GOOG",
     ),
+    intent: QuoteIntent | None = typer.Option(
+        None,
+        "--intent",
+        case_sensitive=False,
+        help="Quote intent: best_effort, top_of_book, last_only.",
+    ),
 ) -> None:
     state = get_state(ctx)
     try:
-        data = run_async(daemon_request(state, "quote.snapshot", {"symbols": symbols}))
+        params: dict[str, object] = {"symbols": symbols}
+        if intent is not None:
+            params["intent"] = intent.value
+        data = run_async(daemon_request(state, "quote.snapshot", params))
         quotes = data.get("quotes", [])
         if isinstance(quotes, list):
-            _warn_on_empty_quotes(quotes, provider=state.config.provider)
+            _warn_on_quote_results(
+                quotes,
+                provider=state.config.provider,
+                intent=str(data.get("intent") or state.config.market_data.quote_intent_default),
+                provider_capabilities=data.get("provider_capabilities"),
+            )
         print_output(quotes, json_output=state.json_output, title="Quotes")
     except BrokerError as exc:
         handle_error(exc, json_output=state.json_output)
@@ -78,6 +98,12 @@ def watch(
         help="Comma-separated fields (bid,ask,last,volume,timestamp,exchange,currency,symbol).",
     ),
     interval: str = typer.Option("1s", "--interval", help="Refresh interval (e.g. 250ms, 1s, 2m)."),
+    intent: QuoteIntent | None = typer.Option(
+        None,
+        "--intent",
+        case_sensitive=False,
+        help="Quote intent: best_effort, top_of_book, last_only.",
+    ),
 ) -> None:
     state = get_state(ctx)
     interval_seconds = _parse_interval(interval)
@@ -85,7 +111,10 @@ def watch(
 
     try:
         while True:
-            data = run_async(daemon_request(state, "quote.snapshot", {"symbols": [symbol], "force": True}))
+            params: dict[str, object] = {"symbols": [symbol], "force": True}
+            if intent is not None:
+                params["intent"] = intent.value
+            data = run_async(daemon_request(state, "quote.snapshot", params))
             quote = (data.get("quotes") or [{}])[0]
             row = {field: quote.get(field, "") for field in chosen_fields}
             print(json.dumps(row, default=str, separators=(",", ":")))
@@ -147,6 +176,31 @@ def history(
         handle_error(exc, json_output=state.json_output)
 
 
+@app.command("capabilities", help="Show detected market-data capabilities for the connected provider.")
+def capabilities(
+    ctx: typer.Context,
+    symbols: list[str] = typer.Argument(
+        [],
+        metavar="SYMBOL...",
+        help="Optional symbols to evaluate (defaults from daemon config probe list).",
+    ),
+    refresh: bool = typer.Option(
+        False,
+        "--refresh",
+        help="Force a fresh capability probe via provider API calls.",
+    ),
+) -> None:
+    state = get_state(ctx)
+    params: dict[str, object] = {"refresh": refresh}
+    if symbols:
+        params["symbols"] = symbols
+    try:
+        data = run_async(daemon_request(state, "market.capabilities", params))
+        print_output(data.get("capabilities", data), json_output=state.json_output, title="Market Capabilities")
+    except BrokerError as exc:
+        handle_error(exc, json_output=state.json_output)
+
+
 def _parse_interval(raw: str) -> float:
     text = raw.strip().lower()
     try:
@@ -171,25 +225,77 @@ def _parse_fields(raw: str) -> list[str]:
     return validate_allowed_values(chosen, allowed=WATCH_FIELDS, field_name="fields")
 
 
-def _warn_on_empty_quotes(quotes: list[dict[str, object]], *, provider: str) -> None:
+def _warn_on_quote_results(
+    quotes: list[dict[str, object]],
+    *,
+    provider: str,
+    intent: str,
+    provider_capabilities: object | None,
+) -> None:
     symbols = _symbols_with_empty_quotes(quotes)
-    if not symbols:
-        return
-
-    symbol_text = ", ".join(symbols)
-    if provider == "ib":
+    if symbols:
+        symbol_text = ", ".join(symbols)
+        if provider == "ib":
+            delayed_supported = _provider_supports(provider_capabilities, "delayed")
+            delayed_text = "Delayed fallback appears unavailable for this session/account." if not delayed_supported else ""
+            typer.echo(
+                f"No quote data returned for {symbol_text} (bid/ask/last/volume are null). "
+                "Verify IBKR market-data permissions/subscriptions for the requested symbol. "
+                f"{delayed_text}".strip(),
+                err=True,
+            )
+            return
         typer.echo(
             f"No quote data returned for {symbol_text} (bid/ask/last/volume are null). "
-            "Verify IBKR market-data permissions/subscriptions for the requested symbol.",
+            "Verify symbol validity and provider market-data permissions.",
             err=True,
         )
         return
 
-    typer.echo(
-        f"No quote data returned for {symbol_text} (bid/ask/last/volume are null). "
-        "Verify symbol validity and provider market-data permissions.",
-        err=True,
-    )
+    if intent == QuoteIntent.TOP_OF_BOOK.value:
+        partial = _symbols_with_missing_top_of_book(quotes)
+        if partial:
+            typer.echo(
+                f"Top-of-book data is incomplete for {', '.join(partial)} (bid and/or ask is null).",
+                err=True,
+            )
+            return
+
+    if intent == QuoteIntent.BEST_EFFORT.value:
+        last_only_symbols = _symbols_with_last_only(quotes)
+        if last_only_symbols and provider == "ib":
+            typer.echo(
+                f"Bid/ask unavailable for {', '.join(last_only_symbols)}; showing last price from available market data.",
+                err=True,
+            )
+
+
+def _symbols_with_missing_top_of_book(quotes: list[dict[str, object]]) -> list[str]:
+    symbols: list[str] = []
+    for quote in quotes:
+        if quote.get("bid") is None or quote.get("ask") is None:
+            symbols.append(str(quote.get("symbol") or "?"))
+    return list(dict.fromkeys(symbols))
+
+
+def _symbols_with_last_only(quotes: list[dict[str, object]]) -> list[str]:
+    symbols: list[str] = []
+    for quote in quotes:
+        has_last = quote.get("last") is not None
+        missing_top = quote.get("bid") is None and quote.get("ask") is None
+        if has_last and missing_top:
+            symbols.append(str(quote.get("symbol") or "?"))
+    return list(dict.fromkeys(symbols))
+
+
+def _provider_supports(provider_capabilities: object | None, capability_name: str) -> bool:
+    if not isinstance(provider_capabilities, dict):
+        return True
+    supports = provider_capabilities.get("supports")
+    if not isinstance(supports, dict):
+        return True
+    value = supports.get(capability_name)
+    return bool(value) if isinstance(value, bool) else True
 
 
 def _symbols_with_empty_quotes(quotes: list[dict[str, object]]) -> list[str]:

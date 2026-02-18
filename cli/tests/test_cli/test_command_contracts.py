@@ -59,6 +59,7 @@ def rpc(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, dict[str, Any]]]:
             "daemon.status": {"ok": True, "socket": "/tmp/broker.sock"},
             "daemon.stop": {"stopping": True},
             "quote.snapshot": {"quotes": [{"symbol": "AAPL", "last": 180.0}]},
+            "market.capabilities": {"capabilities": {"provider": "ib", "supports": {"live": True}, "symbols": {}}},
             "market.history": {"bars": []},
             "market.chain": {"symbol": "AAPL", "contracts": []},
             "portfolio.positions": {"positions": []},
@@ -104,6 +105,7 @@ def test_root_command_surface_contract(runner: CliRunner) -> None:
         "daemon",
         "quote",
         "watch",
+        "capabilities",
         "chain",
         "history",
         "order",
@@ -143,6 +145,7 @@ def test_subcommand_surface_contract(
     ("args", "expected_rpc"),
     [
         (["quote", "AAPL"], "quote.snapshot"),
+        (["capabilities"], "market.capabilities"),
         (["chain", "AAPL"], "market.chain"),
         (["history", "AAPL", "--period", "1d", "--bar", "1m"], "market.history"),
         (["order", "buy", "AAPL", "1"], "order.place"),

@@ -8,7 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from broker_daemon.models.market import Bar, OptionChain, Quote
+from broker_daemon.models.market import Bar, OptionChain, ProviderQuoteCapabilities, Quote, QuoteIntent
 from broker_daemon.models.orders import FillRecord, OrderRequest
 from broker_daemon.models.portfolio import Balance, ExposureEntry, PnLSummary, Position
 
@@ -35,6 +35,9 @@ class BrokerProvider(ABC):
             "streaming": False,
             "cancel_all": False,
             "persistent_auth": False,
+            "quote_live": False,
+            "quote_delayed": False,
+            "quote_delayed_frozen": False,
         }
 
     @abstractmethod
@@ -59,8 +62,25 @@ class BrokerProvider(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def quote(self, symbols: list[str]) -> list[Quote]:
+    async def quote(self, symbols: list[str], *, intent: QuoteIntent = "best_effort") -> list[Quote]:
         raise NotImplementedError
+
+    async def quote_capabilities(
+        self,
+        symbols: list[str],
+        *,
+        refresh: bool = False,
+    ) -> ProviderQuoteCapabilities:
+        _ = refresh
+        return ProviderQuoteCapabilities(
+            provider=self.__class__.__name__.replace("Provider", "").lower(),
+            supports={
+                "live": True,
+                "delayed": False,
+                "delayed_frozen": False,
+            },
+            symbols={},
+        )
 
     async def history(self, symbol: str, period: str, bar: str, rth_only: bool) -> list[Bar]:
         raise NotImplementedError

@@ -86,3 +86,20 @@ def test_load_config_supports_etrade_provider_env(tmp_path: Path, monkeypatch) -
     assert cfg.etrade.username == "alice"
     assert cfg.etrade.password == "pw-123"
     assert cfg.etrade.persistent_auth is True
+
+
+def test_load_config_supports_market_data_overrides(tmp_path: Path, monkeypatch) -> None:
+    _set_runtime_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("BROKER_MARKET_DATA_QUOTE_INTENT_DEFAULT", "last_only")
+    monkeypatch.setenv("BROKER_MARKET_DATA_PROBE_SYMBOLS", "AAPL,MSFT")
+    monkeypatch.setenv("BROKER_MARKET_DATA_CAPABILITY_TTL_SECONDS", "42")
+
+    broker_json = tmp_path / "config.json"
+    broker_json.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(broker_config, "DEFAULT_BROKER_CONFIG_JSON", broker_json)
+
+    cfg = broker_config.load_config()
+
+    assert cfg.market_data.quote_intent_default == "last_only"
+    assert cfg.market_data.probe_symbols == ["AAPL", "MSFT"]
+    assert cfg.market_data.capability_ttl_seconds == 42
