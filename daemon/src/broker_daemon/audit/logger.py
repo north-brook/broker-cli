@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -11,6 +12,10 @@ import aiosqlite
 
 from broker_daemon.audit.schema import SCHEMA_STATEMENTS
 from broker_daemon.models.orders import FillRecord, OrderRecord
+
+SQLITE_TIMEOUT_SECONDS = 15.0
+SQLITE_LOCK_RETRIES = 40
+SQLITE_LOCK_RETRY_DELAY_SECONDS = 0.1
 
 
 class AuditLogger:
@@ -24,11 +29,11 @@ class AuditLogger:
 
     async def start(self) -> None:
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = await aiosqlite.connect(self._db_path)
+        self._conn = await aiosqlite.connect(self._db_path, timeout=SQLITE_TIMEOUT_SECONDS)
         self._conn.row_factory = aiosqlite.Row
         for statement in SCHEMA_STATEMENTS:
-            await self._conn.execute(statement)
-        await self._conn.commit()
+            await self._execute_with_retry(statement, ())
+        await self._commit_with_retry()
 
     async def close(self) -> None:
         if self._conn:
@@ -38,8 +43,34 @@ class AuditLogger:
     async def _execute(self, query: str, params: tuple[Any, ...]) -> None:
         if not self._conn:
             raise RuntimeError("AuditLogger has not been started")
-        await self._conn.execute(query, params)
-        await self._conn.commit()
+        await self._execute_with_retry(query, params)
+        await self._commit_with_retry()
+
+    async def _execute_with_retry(self, query: str, params: tuple[Any, ...]) -> None:
+        assert self._conn is not None
+        for attempt in range(SQLITE_LOCK_RETRIES):
+            try:
+                await self._conn.execute(query, params)
+                return
+            except aiosqlite.OperationalError as exc:
+                if "database is locked" not in str(exc).lower():
+                    raise
+                if attempt == SQLITE_LOCK_RETRIES - 1:
+                    raise
+                await asyncio.sleep(SQLITE_LOCK_RETRY_DELAY_SECONDS)
+
+    async def _commit_with_retry(self) -> None:
+        assert self._conn is not None
+        for attempt in range(SQLITE_LOCK_RETRIES):
+            try:
+                await self._conn.commit()
+                return
+            except aiosqlite.OperationalError as exc:
+                if "database is locked" not in str(exc).lower():
+                    raise
+                if attempt == SQLITE_LOCK_RETRIES - 1:
+                    raise
+                await asyncio.sleep(SQLITE_LOCK_RETRY_DELAY_SECONDS)
 
     async def log_command(self, source: str, command: str, arguments: dict[str, Any], result_code: int) -> None:
         await self._execute(

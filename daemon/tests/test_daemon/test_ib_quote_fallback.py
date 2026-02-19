@@ -118,6 +118,22 @@ async def test_quote_retries_with_delayed_data_when_live_snapshot_empty(fake_ib_
 
 
 @pytest.mark.asyncio
+async def test_quote_retries_with_delayed_data_when_live_snapshot_has_nan_values(fake_ib_module: type[_FakeIB]) -> None:
+    fake_ib_module.live_by_symbol = {"AAPL": float("nan")}
+    fake_ib_module.delayed_by_symbol = {"AAPL": 185.22}
+
+    provider = IBProvider(GatewayConfig())
+    quotes = await provider.quote(["AAPL"])
+    await provider.stop()
+
+    ib = fake_ib_module.instances[-1]
+    assert quotes[0].symbol == "AAPL"
+    assert quotes[0].last == pytest.approx(185.22)
+    assert ib.req_tickers_calls == [("AAPL",), ("AAPL",)]
+    assert ib.market_data_type_calls == [3, 1]
+
+
+@pytest.mark.asyncio
 async def test_quote_keeps_live_data_when_available(fake_ib_module: type[_FakeIB]) -> None:
     fake_ib_module.live_by_symbol = {"AAPL": 190.01}
     fake_ib_module.delayed_by_symbol = {"AAPL": 185.22}
@@ -172,3 +188,10 @@ async def test_quote_capabilities_reflect_observed_fields(fake_ib_module: type[_
     assert capabilities.symbols["AAPL"].fields.last is True
     assert capabilities.symbols["AAPL"].fields.bid is True
     assert capabilities.symbols["AAPL"].fields.ask is True
+
+
+def test_to_float_or_none_rejects_nan_and_ib_unset_sentinel() -> None:
+    from broker_daemon.providers.ib import _to_float_or_none
+
+    assert _to_float_or_none(float("nan")) is None
+    assert _to_float_or_none(1.7976931348623157e308) is None

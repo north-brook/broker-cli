@@ -6,6 +6,8 @@ import asyncio
 from difflib import get_close_matches
 import json
 import os
+from pathlib import Path
+import signal
 import subprocess
 import sys
 import time
@@ -121,13 +123,26 @@ def start_daemon_process(
     *,
     extra_env: dict[str, str] | None = None,
 ) -> int:
+    socket_was_stale = False
     if cfg.runtime.socket_path.exists():
         try:
             status = run_async(daemon_request(CLIState(cfg, json_output=True), "daemon.status", {}))
             if status:
                 return 0
         except Exception:
-            cfg.runtime.socket_path.unlink(missing_ok=True)
+            socket_was_stale = True
+
+    pid = _read_pid_file(cfg.runtime.pid_file)
+    if pid is not None and _is_pid_running(pid):
+        # Process exists but daemon is not healthy/reachable; terminate stale owner before restarting.
+        _terminate_pid(pid)
+        if _wait_for_pid_exit(pid, timeout_seconds=5):
+            cfg.runtime.pid_file.unlink(missing_ok=True)
+        else:
+            return 1
+
+    if socket_was_stale:
+        cfg.runtime.socket_path.unlink(missing_ok=True)
 
     cmd = [sys.executable, "-m", "broker_daemon.daemon.server"]
 
@@ -153,6 +168,45 @@ def start_daemon_process(
                 pass
         time.sleep(0.1)
     return 1
+
+
+def _read_pid_file(path: Path) -> int | None:
+    try:
+        raw = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
+def _is_pid_running(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def _terminate_pid(pid: int) -> None:
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except OSError:
+        return
+
+
+def _wait_for_pid_exit(pid: int, *, timeout_seconds: float) -> bool:
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        if not _is_pid_running(pid):
+            return True
+        time.sleep(0.1)
+    return not _is_pid_running(pid)
 
 
 def _default_suggestion(code: ErrorCode) -> str | None:

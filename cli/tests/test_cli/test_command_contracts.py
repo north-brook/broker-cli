@@ -253,6 +253,7 @@ def test_daemon_restart_uses_stop_and_start(monkeypatch: pytest.MonkeyPatch, run
         return 0
 
     monkeypatch.setattr(daemon, "daemon_request", fake_daemon_request)
+    monkeypatch.setattr(daemon, "_wait_for_daemon_shutdown", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(daemon, "start_daemon_process", fake_start)
 
     result = runner.invoke(app, ["daemon", "restart", "--paper"])

@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
+import signal
+import time
+
 import typer
 
 from _common import build_typer, daemon_request, get_state, handle_error, print_output, run_async, start_daemon_process
+from broker_daemon.config import AppConfig
 from broker_daemon.exceptions import BrokerError
 
 app = build_typer("Daemon lifecycle commands (`start`, `stop`, `status`, `restart`).")
@@ -69,9 +75,83 @@ def restart(
     except Exception:
         pass
 
+    if not _wait_for_daemon_shutdown(state.config, timeout_seconds=10):
+        pid = _read_pid_file(state.config.runtime.pid_file)
+        if pid is not None and _is_pid_running(pid):
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except OSError:
+                pass
+            if not _wait_for_daemon_shutdown(state.config, timeout_seconds=5):
+                typer.echo(
+                    "Timed out waiting for daemon shutdown. Check for stale broker-daemon processes and retry.",
+                    err=True,
+                )
+                raise typer.Exit(code=1)
+        else:
+            typer.echo(
+                "Timed out waiting for daemon shutdown. Check for stale broker-daemon processes and retry.",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+
     env = {"BROKER_GATEWAY_PORT": "4002"} if paper else None
     code = start_daemon_process(state.config, extra_env=env)
     if code != 0:
         typer.echo("Failed to restart daemon. Check broker log (default: ~/.local/state/broker/broker.log).", err=True)
         raise typer.Exit(code=1)
     print_output({"ok": True}, json_output=state.json_output)
+
+
+def _wait_for_daemon_shutdown(cfg: AppConfig, *, timeout_seconds: float) -> bool:
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        socket_exists = cfg.runtime.socket_path.exists()
+        pid = _read_pid_file(cfg.runtime.pid_file)
+        pid_running = pid is not None and _is_pid_running(pid)
+
+        daemon_responding = False
+        if socket_exists:
+            try:
+                run_async(daemon_request(_status_state(cfg), "daemon.status", {}))
+                daemon_responding = True
+            except Exception:
+                daemon_responding = False
+
+        if socket_exists and not daemon_responding and not pid_running:
+            cfg.runtime.socket_path.unlink(missing_ok=True)
+            socket_exists = False
+
+        if not socket_exists and not daemon_responding and not pid_running:
+            return True
+        time.sleep(0.1)
+    return False
+
+
+def _status_state(cfg: AppConfig):
+    from _common import CLIState
+
+    return CLIState(cfg, json_output=True)
+
+
+def _read_pid_file(path: Path) -> int | None:
+    try:
+        raw = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
+def _is_pid_running(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False

@@ -112,6 +112,8 @@ class DaemonServer:
         await self._provider.start()
 
         if self.socket_path.exists():
+            if await _socket_is_active(self.socket_path):
+                raise RuntimeError(f"daemon socket already in use: {self.socket_path}")
             self.socket_path.unlink()
 
         self._server = await asyncio.start_unix_server(self._handle_client, path=str(self.socket_path))
@@ -689,6 +691,16 @@ async def _safe_wait_closed(writer: asyncio.StreamWriter) -> None:
         await writer.wait_closed()
     except Exception:
         return
+
+
+async def _socket_is_active(socket_path: Path) -> bool:
+    try:
+        _, writer = await asyncio.open_unix_connection(str(socket_path))
+    except Exception:
+        return False
+    writer.close()
+    await _safe_wait_closed(writer)
+    return True
 
 
 async def run_daemon() -> None:

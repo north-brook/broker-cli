@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 from datetime import UTC, datetime, timedelta
 from typing import Any, Awaitable, Callable
 
@@ -35,6 +36,7 @@ MARKET_DATA_LIVE_BLOCK_ERROR_CODES = {10089, 10197, 354}
 MARKET_DATA_DELAYED_BLOCK_ERROR_CODES = {10186}
 MARKET_DATA_BLOCK_TTL_SECONDS = 30
 QUOTE_EXCHANGE = "SMART"
+IB_UNSET_DOUBLE_THRESHOLD = 1e308
 
 
 class IBProvider(BrokerProvider):
@@ -885,9 +887,15 @@ def _to_float_or_none(value: Any) -> float | None:
     if value is None:
         return None
     try:
-        return float(value)
+        out = float(value)
     except Exception:
         return None
+    if not math.isfinite(out):
+        return None
+    # IB/TWS often uses very large doubles as "unset" sentinels.
+    if abs(out) >= IB_UNSET_DOUBLE_THRESHOLD:
+        return None
+    return out
 
 
 def _read_account_value(by_tag: dict[str, str], tag: str) -> float | None:
