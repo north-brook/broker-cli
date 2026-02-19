@@ -80,14 +80,18 @@ read_single_keypress() {
   local key=""
   local suffix=""
   local suffix2=""
+  local seq_timeout="0.05"
+  if (( BASH_VERSINFO[0] < 4 )); then
+    seq_timeout="1"
+  fi
 
   if has_prompt_tty; then
     IFS= read -r -s -n 1 key < /dev/tty || return 1
     if [[ "${key}" == $'\x1b' ]]; then
-      IFS= read -r -s -n 1 -t 0.05 suffix < /dev/tty || true
+      IFS= read -r -s -n 1 -t "${seq_timeout}" suffix < /dev/tty || true
       key+="${suffix}"
       if [[ "${suffix}" == "[" || "${suffix}" == "O" ]]; then
-        IFS= read -r -s -n 1 -t 0.05 suffix2 < /dev/tty || true
+        IFS= read -r -s -n 1 -t "${seq_timeout}" suffix2 < /dev/tty || true
         key+="${suffix2}"
       fi
     fi
