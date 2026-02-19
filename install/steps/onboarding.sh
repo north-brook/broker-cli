@@ -79,16 +79,16 @@ read_secret_input() {
 read_single_keypress() {
   local key=""
   local suffix=""
+  local suffix2=""
 
   if has_prompt_tty; then
     IFS= read -r -s -n 1 key < /dev/tty || return 1
     if [[ "${key}" == $'\x1b' ]]; then
       IFS= read -r -s -n 1 -t 0.05 suffix < /dev/tty || true
       key+="${suffix}"
-      if [[ "${suffix}" == "[" ]]; then
-        suffix=""
-        IFS= read -r -s -n 1 -t 0.05 suffix < /dev/tty || true
-        key+="${suffix}"
+      if [[ "${suffix}" == "[" || "${suffix}" == "O" ]]; then
+        IFS= read -r -s -n 1 -t 0.05 suffix2 < /dev/tty || true
+        key+="${suffix2}"
       fi
     fi
   else
@@ -161,10 +161,10 @@ prompt_menu_select() {
         tty_printf "\n"
         fail "Setup cancelled."
         ;;
-      $'\x1b[A'|k|K)
+      $'\x1b[A'|$'\x1bOA'|k|K)
         selected_index=$(((selected_index - 1 + option_count) % option_count))
         ;;
-      $'\x1b[B'|j|J)
+      $'\x1b[B'|$'\x1bOB'|j|J)
         selected_index=$(((selected_index + 1) % option_count))
         ;;
       [1-9])
