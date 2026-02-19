@@ -98,7 +98,7 @@ const features = [
   {
     title: "CLI-First, Agent-Ready",
     description:
-      "Every action is a shell command. Agents don't need SDKs, API keys, or custom integrations — just bash. The universal interface AI already knows.",
+      "Every action is a shell command with deterministic JSON envelopes (`ok,data,error,meta`). Agents don't need SDKs, API keys, or custom integrations — just bash.",
     icon: Zap,
   },
   {
@@ -296,7 +296,7 @@ export default function Home() {
               </p>
               <p>
                 <span className="text-blue-400">agent</span> → broker exposure
-                --by symbol --json
+                --by symbol
               </p>
               <p>
                 <span className="text-blue-400">agent</span> → TSLA is 34.2% of
@@ -304,7 +304,7 @@ export default function Home() {
               </p>
               <p>
                 <span className="text-blue-400">agent</span> → broker order sell
-                TSLA 142 --limit 248.50
+                TSLA 142 --limit 248.50 --dry-run --idempotency-key rebalance-tsla-2026-02-19
               </p>
               <p>
                 <Check className="w-4 h-4 text-[var(--accent)] inline" /> Order placed.
@@ -327,7 +327,7 @@ export default function Home() {
             <div className="border-t border-[var(--border)] pt-3 text-[var(--muted)] space-y-1">
               <p>
                 <span className="text-blue-400">agent</span> → broker
-                option-chain AAPL --type put --expiry 2026-02-20 --json
+                chain AAPL --type put --expiry 2026-02 --limit 80 --fields strike,expiry,bid,ask,delta
               </p>
               <p>
                 <span className="text-blue-400">agent</span> → Filtering 47
@@ -339,7 +339,7 @@ export default function Home() {
               </p>
               <p>
                 <span className="text-blue-400">agent</span> → broker order buy
-                AAPL250220P220 1 --limit 3.45
+                AAPL250220P220 1 --limit 3.45 --idempotency-key aapl-hedge-220p
               </p>
               <p>
                 <Check className="w-4 h-4 text-[var(--accent)] inline" /> Order placed.
@@ -361,16 +361,17 @@ export default function Home() {
             ["broker uninstall", "Fully remove broker installation artifacts"],
             ["broker daemon start", "Start the trading daemon"],
             ["broker daemon start --paper", "Paper trading mode"],
-            ["broker portfolio", "View all positions"],
+            ["broker snapshot --symbols AAPL,MSFT", "Single-call state snapshot for agent loops"],
             ["broker exposure --by symbol", "Portfolio exposure breakdown"],
             [
-              "broker option-chain AAPL --type call",
-              "Option chains with greeks",
+              "broker chain AAPL --type call --limit 50 --fields strike,expiry,bid,ask",
+              "Token-efficient option chain query",
             ],
-            ["broker order buy AAPL 100 --limit 185", "Place orders"],
-            ["broker cancel-all", "Cancel all open orders"],
+            ["broker order buy AAPL 100 --limit 185 --dry-run --idempotency-key rebalance-aapl", "Safe order preview + idempotent submit"],
+            ["broker cancel --all", "Cancel all open orders"],
             ["broker orders", "List open orders"],
             ["broker daemon status", "Check daemon and broker connection"],
+            ["broker schema quote.snapshot", "Fetch command JSON schema"],
           ].map(([cmd, desc]) => (
             <div key={cmd} className="flex flex-col sm:flex-row sm:gap-4">
               <span className="text-[var(--foreground)]">

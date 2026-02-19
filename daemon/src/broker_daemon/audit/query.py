@@ -27,13 +27,14 @@ async def query_commands(
     *,
     source: str | None = None,
     since: str | None = None,
+    request_id: str | None = None,
 ) -> list[dict[str, Any]]:
-    where, values = _where_clause({"source": source})
+    where, values = _where_clause({"source": source, "request_id": request_id})
     if since:
         where = f"{where} {'AND' if where else 'WHERE'} timestamp >= ?"
         values.append(since)
     return await logger.fetch_all(
-        f"SELECT timestamp, source, command, arguments, result_code FROM commands {where} ORDER BY id DESC",
+        f"SELECT timestamp, source, command, arguments, result_code, request_id FROM commands {where} ORDER BY id DESC",
         tuple(values),
     )
 

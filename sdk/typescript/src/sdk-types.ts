@@ -5,6 +5,7 @@ export const TIME_IN_FORCE_VALUES = ["DAY", "GTC", "IOC"] as const;
 export const HISTORY_PERIODS = ["1d", "5d", "30d", "90d", "1y"] as const;
 export const BAR_SIZES = ["1m", "5m", "15m", "1h", "1d"] as const;
 export const OPTION_TYPES = ["call", "put"] as const;
+export const CHAIN_FIELDS = ["symbol", "right", "strike", "expiry", "bid", "ask", "implied_vol", "delta", "gamma", "theta", "vega"] as const;
 export const QUOTE_INTENTS = ["best_effort", "top_of_book", "last_only"] as const;
 export const ORDER_STATUS_FILTERS = ["active", "filled", "cancelled", "all"] as const;
 export const EXPOSURE_GROUPS = ["sector", "asset_class", "currency", "symbol"] as const;
@@ -29,6 +30,7 @@ export type TimeInForce = (typeof TIME_IN_FORCE_VALUES)[number];
 export type HistoryPeriod = (typeof HISTORY_PERIODS)[number];
 export type BarSize = (typeof BAR_SIZES)[number];
 export type OptionType = (typeof OPTION_TYPES)[number];
+export type ChainField = (typeof CHAIN_FIELDS)[number];
 export type QuoteIntent = (typeof QUOTE_INTENTS)[number];
 export type OrderStatusFilter = (typeof ORDER_STATUS_FILTERS)[number];
 export type ExposureGroupBy = (typeof EXPOSURE_GROUPS)[number];
@@ -78,6 +80,14 @@ export interface ProviderQuoteCapabilities {
   updated_at: string;
 }
 
+export interface CapabilityCacheMeta {
+  refresh_requested: boolean;
+  cache_hit: boolean;
+  cache_age_ms: number | null;
+  cache_ttl_ms: number;
+  refreshed_at: string | null;
+}
+
 export interface Bar {
   symbol: string;
   time: string;
@@ -106,6 +116,13 @@ export interface OptionChainResponse {
   symbol: string;
   underlying_price: number | null;
   entries: OptionChainEntry[];
+  pagination?: {
+    total_entries: number;
+    offset: number;
+    limit: number;
+    returned_entries: number;
+  };
+  fields?: string[];
 }
 
 export interface Position {
@@ -227,10 +244,12 @@ export interface QuoteSnapshotResponse {
   quotes: Quote[];
   intent?: QuoteIntent;
   provider_capabilities?: ProviderQuoteCapabilities;
+  provider_capabilities_cache?: CapabilityCacheMeta;
 }
 
 export interface MarketCapabilitiesResponse {
   capabilities: ProviderQuoteCapabilities;
+  cache: CapabilityCacheMeta;
 }
 
 export interface MarketHistoryResponse {
@@ -254,8 +273,27 @@ export interface PortfolioExposureResponse {
   by: string;
 }
 
+export interface PortfolioSnapshotResponse {
+  timestamp: string;
+  symbols: string[];
+  quotes: Quote[];
+  positions: Position[];
+  balance: Balance;
+  pnl: PnLSummary;
+  exposure: ExposureEntry[];
+  exposure_by: string;
+  risk_limits: RiskConfigSnapshot;
+  risk_halted: boolean;
+  connection: DaemonStatusResponse["connection"];
+  provider_capabilities: ProviderQuoteCapabilities;
+  provider_capabilities_cache: CapabilityCacheMeta;
+}
+
 export interface OrderPlaceResponse {
   order: OrderRecord;
+  dry_run: boolean;
+  risk_check: RiskCheckResult;
+  submit_allowed: boolean;
 }
 
 export interface OrderBracketResponse {
@@ -319,6 +357,7 @@ export interface AuditCommandsRow {
   command: string;
   arguments: string;
   result_code: number;
+  request_id?: string | null;
 }
 
 export interface AuditOrdersRow {
@@ -378,6 +417,8 @@ export interface OrderInput {
   stop?: number;
   tif?: TimeInForce;
   client_order_id?: string;
+  idempotency_key?: string;
+  dry_run?: boolean;
 }
 
 export interface BracketInput {

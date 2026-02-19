@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 import shutil
@@ -10,7 +11,7 @@ import sys
 
 import typer
 
-from _common import get_state, print_output
+from _common import build_meta, get_state, print_output
 
 
 class UpdateCommandError(RuntimeError):
@@ -56,7 +57,6 @@ def update(
 
         print_output(
             {
-                "ok": True,
                 "repo": str(repo_root),
                 "branch": "main",
                 "from": before_sha,
@@ -65,18 +65,20 @@ def update(
                 "reinstalled": reinstalled,
             },
             json_output=state.json_output,
+            command="update.sync",
+            strict=state.strict,
         )
     except UpdateCommandError as exc:
-        print_output(
-            {
-                "ok": False,
-                "error": {
-                    "code": "UPDATE_FAILED",
-                    "message": str(exc),
-                },
+        payload = {
+            "ok": False,
+            "data": None,
+            "error": {
+                "code": "UPDATE_FAILED",
+                "message": str(exc),
             },
-            json_output=state.json_output,
-        )
+            "meta": build_meta(command="update.sync", strict=state.strict),
+        }
+        print(json.dumps(payload, default=str, separators=(",", ":")))
         raise typer.Exit(code=1)
 
 

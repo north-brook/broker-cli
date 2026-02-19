@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from datetime import UTC, datetime
 from difflib import get_close_matches
 import logging
 import os
@@ -22,7 +23,7 @@ from broker_daemon.daemon.market_data import MarketDataService
 from broker_daemon.daemon.order_manager import OrderManager
 from broker_daemon.exceptions import ErrorCode, BrokerError
 from broker_daemon.models.events import Event, EventTopic
-from broker_daemon.models.market import QUOTE_INTENTS
+from broker_daemon.models.market import QUOTE_INTENTS, OptionChainEntry
 from broker_daemon.models.orders import FillRecord, OrderRequest
 from broker_daemon.protocol import ErrorResponse, EventEnvelope, Request, Response, decode_request, encode_model, frame_payload, read_framed
 from broker_daemon.providers import IBProvider
@@ -42,6 +43,7 @@ KNOWN_COMMANDS: tuple[str, ...] = (
     "portfolio.balance",
     "portfolio.pnl",
     "portfolio.exposure",
+    "portfolio.snapshot",
     "order.place",
     "order.bracket",
     "order.status",
@@ -61,9 +63,11 @@ KNOWN_COMMANDS: tuple[str, ...] = (
     "audit.orders",
     "audit.risk",
     "audit.export",
+    "schema.get",
 )
 ORDER_STATUSES = {"active", "filled", "cancelled", "all"}
 OPTION_TYPES = {"call", "put"}
+OPTION_CHAIN_FIELDS = frozenset(OptionChainEntry.model_fields.keys())
 
 
 @dataclass
@@ -218,7 +222,13 @@ class DaemonServer:
         await _safe_wait_closed(writer)
 
         if request:
-            await self._audit.log_command(request.source, request.command, request.params, result_code)
+            await self._audit.log_command(
+                request.source,
+                request.command,
+                request.params,
+                result_code,
+                request_id=request.request_id,
+            )
 
     async def _register_subscriber(
         self,
@@ -241,7 +251,13 @@ class DaemonServer:
 
         sub = Subscriber(writer=writer, topics=topics)
         self._subscribers.append(sub)
-        await self._audit.log_command(request.source, request.command, request.params, 0)
+        await self._audit.log_command(
+            request.source,
+            request.command,
+            request.params,
+            0,
+            request_id=request.request_id,
+        )
 
         response = Response(request_id=request.request_id, ok=True, data={"subscribed": sorted(topics)})
         writer.write(frame_payload(encode_model(response)))
@@ -287,34 +303,54 @@ class DaemonServer:
                 force_refresh=bool(p.get("force", False)),
                 intent=intent,
             )
-            provider_capabilities = await self._market_data.quote_capabilities(symbols, refresh=False)
+            provider_capabilities, capabilities_cache = await self._market_data.quote_capabilities_with_meta(
+                symbols,
+                refresh=False,
+            )
             return {
                 "quotes": [q.model_dump(mode="json") for q in quotes],
                 "intent": intent,
                 "provider_capabilities": provider_capabilities.model_dump(mode="json"),
+                "provider_capabilities_cache": capabilities_cache,
             }
 
         if cmd == "market.capabilities":
             symbols = [str(s).upper() for s in p.get("symbols", []) if str(s).strip()]
-            capabilities = await self._market_data.quote_capabilities(
+            capabilities, cache_meta = await self._market_data.quote_capabilities_with_meta(
                 symbols if symbols else None,
                 refresh=bool(p.get("refresh", False)),
             )
-            return {"capabilities": capabilities.model_dump(mode="json")}
+            return {
+                "capabilities": capabilities.model_dump(mode="json"),
+                "cache": cache_meta,
+            }
 
         if cmd == "market.history":
             self._require_capability("history", "historical bars")
+            symbol = str(p["symbol"]).upper()
+            period = str(p.get("period", "30d"))
+            bar = str(p.get("bar", "1h"))
             bars = await self._provider.history(
-                symbol=str(p["symbol"]),
-                period=str(p.get("period", "30d")),
-                bar=str(p.get("bar", "1h")),
+                symbol=symbol,
+                period=period,
+                bar=bar,
                 rth_only=bool(p.get("rth_only", False)),
             )
+            if bool(p.get("strict", False)) and not bars:
+                raise BrokerError(
+                    ErrorCode.INVALID_SYMBOL,
+                    f"no historical bars returned for symbol '{symbol}'",
+                    details={"symbol": symbol, "period": period, "bar": bar},
+                    suggestion="Use a valid symbol or disable strict mode with --no-strict.",
+                )
             return {"bars": [b.model_dump(mode="json") for b in bars]}
 
         if cmd == "market.chain":
             self._require_capability("option_chain", "option chains")
-            strike_range = _parse_strike_range(p.get("strike_range"))
+            raw_strike_range = p.get("strike_range")
+            if raw_strike_range is None:
+                raw_strike_range = "0.9:1.1"
+            strike_range = _parse_strike_range(raw_strike_range)
             option_type = p.get("type")
             if option_type is not None and str(option_type).lower() not in OPTION_TYPES:
                 raise BrokerError(
@@ -323,13 +359,44 @@ class DaemonServer:
                     details={"valid_types": sorted(OPTION_TYPES)},
                     suggestion="Use --type call or --type put",
                 )
+            limit = _parse_positive_int(p.get("limit", 200), field_name="limit", min_value=1)
+            offset = _parse_positive_int(p.get("offset", 0), field_name="offset", min_value=0)
+            selected_fields = _parse_chain_fields(p.get("fields"))
+            symbol = str(p["symbol"]).upper()
             chain = await self._provider.option_chain(
-                symbol=str(p["symbol"]),
+                symbol=symbol,
                 expiry_prefix=p.get("expiry"),
                 strike_range=strike_range,
                 option_type=str(option_type).lower() if option_type is not None else None,
             )
-            return chain.model_dump(mode="json")
+            payload = chain.model_dump(mode="json")
+            all_entries = payload.get("entries", [])
+            if selected_fields:
+                all_entries = [{field: entry.get(field) for field in selected_fields} for entry in all_entries]
+            entries = all_entries[offset : offset + limit]
+            if bool(p.get("strict", False)) and not entries:
+                raise BrokerError(
+                    ErrorCode.INVALID_SYMBOL,
+                    f"no option contracts matched filters for '{symbol}'",
+                    details={
+                        "symbol": symbol,
+                        "expiry": p.get("expiry"),
+                        "strike_range": raw_strike_range,
+                        "offset": offset,
+                        "limit": limit,
+                    },
+                    suggestion="Relax filters, increase --limit, or disable strict mode with --no-strict.",
+                )
+            payload["entries"] = entries
+            payload["pagination"] = {
+                "total_entries": len(all_entries),
+                "offset": offset,
+                "limit": limit,
+                "returned_entries": len(entries),
+            }
+            if selected_fields:
+                payload["fields"] = selected_fields
+            return payload
 
         if cmd == "portfolio.positions":
             positions = await self._provider.positions()
@@ -350,10 +417,101 @@ class DaemonServer:
             rows = await self._provider.exposure(by)
             return {"exposure": [r.model_dump(mode="json") for r in rows], "by": by}
 
+        if cmd == "portfolio.snapshot":
+            requested_symbols = [str(s).upper() for s in p.get("symbols", []) if str(s).strip()]
+            quote_intent = str(p.get("intent", self._cfg.market_data.quote_intent_default)).lower()
+            if quote_intent not in QUOTE_INTENTS:
+                raise BrokerError(
+                    ErrorCode.INVALID_ARGS,
+                    f"unsupported quote intent '{quote_intent}'",
+                    details={"valid_intents": list(QUOTE_INTENTS)},
+                    suggestion="Use intent best_effort, top_of_book, or last_only.",
+                )
+            exposure_by = str(p.get("exposure_by", "symbol")).lower()
+
+            positions, balance, pnl = await asyncio.gather(
+                self._provider.positions(),
+                self._provider.balance(),
+                self._provider.pnl(),
+            )
+
+            quote_symbols = requested_symbols or sorted({position.symbol.upper() for position in positions if position.symbol})
+            quotes = (
+                await self._market_data.quote(
+                    quote_symbols,
+                    force_refresh=bool(p.get("force", False)),
+                    intent=quote_intent,
+                )
+                if quote_symbols
+                else []
+            )
+            provider_capabilities, capabilities_cache = await self._market_data.quote_capabilities_with_meta(
+                quote_symbols or None,
+                refresh=False,
+            )
+
+            exposure_rows: list[dict[str, Any]] = []
+            if self._provider.capabilities.get("exposure"):
+                exposure_items = await self._provider.exposure(exposure_by)
+                exposure_rows = [row.model_dump(mode="json") for row in exposure_items]
+
+            return {
+                "timestamp": datetime.now(UTC).isoformat(),
+                "symbols": quote_symbols,
+                "quotes": [quote.model_dump(mode="json") for quote in quotes],
+                "positions": [position.model_dump(mode="json") for position in positions],
+                "balance": balance.model_dump(mode="json"),
+                "pnl": pnl.model_dump(mode="json"),
+                "exposure": exposure_rows,
+                "exposure_by": exposure_by,
+                "risk_limits": self._risk.snapshot().model_dump(mode="json"),
+                "risk_halted": self._risk.halted,
+                "connection": self._provider.status().model_dump(mode="json"),
+                "provider_capabilities": provider_capabilities.model_dump(mode="json"),
+                "provider_capabilities_cache": capabilities_cache,
+            }
+
         if cmd == "order.place":
-            req = OrderRequest.model_validate(p)
+            raw = dict(p)
+            dry_run = bool(raw.pop("dry_run", False))
+            idempotency_key = raw.pop("idempotency_key", None)
+            if idempotency_key and not raw.get("client_order_id"):
+                raw["client_order_id"] = str(idempotency_key)
+
+            req = OrderRequest.model_validate(raw)
+
+            if dry_run:
+                context = await self._orders._risk_context()  # noqa: SLF001
+                risk_result = self._risk.check_order(req, context)
+                event_type = "check_passed" if risk_result.ok else "check_failed"
+                await self._audit.log_risk_event(
+                    event_type,
+                    {
+                        "dry_run": True,
+                        "symbol": req.symbol,
+                        "side": req.side.value,
+                        "qty": req.qty,
+                        **risk_result.model_dump(mode="json"),
+                    },
+                )
+                preview_order = _build_dry_run_order_preview(
+                    req,
+                    risk_result=risk_result.model_dump(mode="json"),
+                )
+                return {
+                    "order": preview_order,
+                    "dry_run": True,
+                    "risk_check": risk_result.model_dump(mode="json"),
+                    "submit_allowed": bool(risk_result.ok),
+                }
+
             record = await self._orders.place_order(req)
-            return {"order": record.model_dump(mode="json")}
+            return {
+                "order": record.model_dump(mode="json"),
+                "dry_run": False,
+                "risk_check": record.risk_check_result,
+                "submit_allowed": True,
+            }
 
         if cmd == "order.bracket":
             self._require_capability("bracket_orders", "bracket orders")
@@ -474,7 +632,12 @@ class DaemonServer:
             }
 
         if cmd == "audit.commands":
-            rows = await query_commands(self._audit, source=p.get("source"), since=p.get("since"))
+            rows = await query_commands(
+                self._audit,
+                source=p.get("source"),
+                since=p.get("since"),
+                request_id=p.get("request_id"),
+            )
             return {"commands": rows}
 
         if cmd == "audit.orders":
@@ -493,13 +656,22 @@ class DaemonServer:
 
             table = str(p.get("table", "orders"))
             if table == "commands":
-                rows = await query_commands(self._audit, source=p.get("source"), since=p.get("since"))
+                rows = await query_commands(
+                    self._audit,
+                    source=p.get("source"),
+                    since=p.get("since"),
+                    request_id=p.get("request_id"),
+                )
             elif table == "risk":
                 rows = await query_risk_events(self._audit, event_type=p.get("type"))
             else:
                 rows = await query_orders(self._audit, status=p.get("status"), since=p.get("since"))
             export_rows_to_csv(rows, target)
             return {"output": str(target), "rows": len(rows)}
+
+        if cmd == "schema.get":
+            requested = p.get("command")
+            return _schema_payload(command=str(requested) if requested else None)
 
         raise _unknown_command_error(cmd)
 
@@ -638,6 +810,365 @@ def _parse_strike_range(raw: Any) -> tuple[float, float] | None:
             "strike-range must be numeric, like 0.8:1.2",
             suggestion="Example: broker chain AAPL --strike-range 0.8:1.2",
         ) from exc
+
+
+def _parse_positive_int(raw: Any, *, field_name: str, min_value: int) -> int:
+    try:
+        value = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise BrokerError(
+            ErrorCode.INVALID_ARGS,
+            f"{field_name} must be an integer",
+            details={field_name: raw},
+            suggestion=f"Use --{field_name} {min_value}",
+        ) from exc
+    if value < min_value:
+        raise BrokerError(
+            ErrorCode.INVALID_ARGS,
+            f"{field_name} must be >= {min_value}",
+            details={field_name: value},
+            suggestion=f"Use --{field_name} {min_value}",
+        )
+    return value
+
+
+def _parse_chain_fields(raw: Any) -> list[str] | None:
+    if raw is None:
+        return None
+
+    values: list[str]
+    if isinstance(raw, str):
+        values = [part.strip().lower() for part in raw.split(",") if part.strip()]
+    elif isinstance(raw, (list, tuple, set)):
+        values = [str(part).strip().lower() for part in raw if str(part).strip()]
+    else:
+        raise BrokerError(
+            ErrorCode.INVALID_ARGS,
+            "fields must be a list or comma-separated string",
+            suggestion="Use --fields symbol,strike,expiry,bid,ask",
+        )
+
+    if not values:
+        raise BrokerError(
+            ErrorCode.INVALID_ARGS,
+            "fields must contain at least one value",
+            suggestion="Use --fields symbol,strike,expiry,bid,ask",
+        )
+
+    invalid = [field for field in values if field not in OPTION_CHAIN_FIELDS]
+    if invalid:
+        raise BrokerError(
+            ErrorCode.INVALID_ARGS,
+            f"unsupported chain field(s): {', '.join(invalid)}",
+            details={"valid_fields": sorted(OPTION_CHAIN_FIELDS)},
+            suggestion="Use fields from: " + ", ".join(sorted(OPTION_CHAIN_FIELDS)),
+        )
+    return list(dict.fromkeys(values))
+
+
+def _build_dry_run_order_preview(req: OrderRequest, *, risk_result: dict[str, Any]) -> dict[str, Any]:
+    if req.limit is not None and req.stop is not None:
+        order_type = "stop_limit"
+    elif req.limit is not None:
+        order_type = "limit"
+    elif req.stop is not None:
+        order_type = "stop"
+    else:
+        order_type = "market"
+
+    status = "DryRunAccepted" if bool(risk_result.get("ok")) else "DryRunRejected"
+    client_order_id = req.client_order_id or f"dryrun-{int(time.time() * 1000)}"
+    return {
+        "client_order_id": client_order_id,
+        "ib_order_id": None,
+        "symbol": req.symbol,
+        "side": req.side.value,
+        "qty": req.qty,
+        "order_type": order_type,
+        "limit_price": req.limit,
+        "stop_price": req.stop,
+        "tif": req.tif.value,
+        "status": status,
+        "submitted_at": datetime.now(UTC).isoformat(),
+        "filled_at": None,
+        "fill_price": None,
+        "fill_qty": 0.0,
+        "commission": None,
+        "risk_check_result": risk_result,
+    }
+
+
+def _schema_payload(command: str | None = None) -> dict[str, Any]:
+    schemas = _command_schema_registry()
+    if command:
+        if command not in schemas:
+            raise BrokerError(
+                ErrorCode.INVALID_ARGS,
+                f"unknown schema command '{command}'",
+                details={"known_commands": sorted(schemas)},
+                suggestion="Run `broker schema` to list available commands.",
+            )
+        return {
+            "schema_version": "v1",
+            "command": command,
+            "schema": schemas[command],
+            "envelope": _cli_envelope_schema(),
+        }
+    return {
+        "schema_version": "v1",
+        "commands": schemas,
+        "envelope": _cli_envelope_schema(),
+    }
+
+
+def _cli_envelope_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "ok": {"type": "boolean"},
+            "data": {},
+            "error": {
+                "anyOf": [
+                    {"type": "null"},
+                    {
+                        "type": "object",
+                        "additionalProperties": True,
+                        "properties": {
+                            "code": {"type": "string"},
+                            "message": {"type": "string"},
+                            "details": {"type": "object"},
+                            "suggestion": {"type": ["string", "null"]},
+                        },
+                        "required": ["code", "message"],
+                    },
+                ]
+            },
+            "meta": {
+                "type": "object",
+                "additionalProperties": True,
+                "properties": {
+                    "schema_version": {"const": "v1"},
+                    "command": {"type": "string"},
+                    "request_id": {"type": "string"},
+                    "timestamp": {"type": "string", "format": "date-time"},
+                    "strict": {"type": "boolean"},
+                },
+                "required": ["schema_version", "command", "request_id", "timestamp"],
+            },
+        },
+        "required": ["ok", "data", "error", "meta"],
+    }
+
+
+def _command_schema_registry() -> dict[str, dict[str, Any]]:
+    any_json: dict[str, Any] = {}
+    scalar = {"type": ["string", "number", "boolean", "null"]}
+    base = {
+        command: {
+            "params": {"type": "object", "additionalProperties": True},
+            "result": {"anyOf": [any_json, {"type": "array"}, scalar]},
+        }
+        for command in KNOWN_COMMANDS
+    }
+
+    base["quote.snapshot"] = {
+        "params": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "symbols": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+                "force": {"type": "boolean"},
+                "intent": {"enum": list(QUOTE_INTENTS)},
+            },
+            "required": ["symbols"],
+        },
+        "result": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "quotes": {"type": "array", "items": {"type": "object"}},
+                "intent": {"enum": list(QUOTE_INTENTS)},
+                "provider_capabilities": {"type": "object"},
+                "provider_capabilities_cache": {"type": "object"},
+            },
+            "required": ["quotes", "intent", "provider_capabilities"],
+        },
+    }
+
+    base["market.capabilities"] = {
+        "params": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "symbols": {"type": "array", "items": {"type": "string"}},
+                "refresh": {"type": "boolean"},
+            },
+        },
+        "result": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "capabilities": {"type": "object"},
+                "cache": {"type": "object"},
+            },
+            "required": ["capabilities", "cache"],
+        },
+    }
+
+    base["market.history"] = {
+        "params": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "symbol": {"type": "string"},
+                "period": {"enum": ["1d", "5d", "30d", "90d", "1y"]},
+                "bar": {"enum": ["1m", "5m", "15m", "1h", "1d"]},
+                "rth_only": {"type": "boolean"},
+                "strict": {"type": "boolean"},
+            },
+            "required": ["symbol"],
+        },
+        "result": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {"bars": {"type": "array", "items": {"type": "object"}}},
+            "required": ["bars"],
+        },
+    }
+
+    base["market.chain"] = {
+        "params": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "symbol": {"type": "string"},
+                "expiry": {"type": "string"},
+                "strike_range": {"type": "string"},
+                "type": {"enum": sorted(OPTION_TYPES)},
+                "limit": {"type": "integer", "minimum": 1},
+                "offset": {"type": "integer", "minimum": 0},
+                "fields": {"type": "array", "items": {"enum": sorted(OPTION_CHAIN_FIELDS)}},
+                "strict": {"type": "boolean"},
+            },
+            "required": ["symbol"],
+        },
+        "result": {
+            "type": "object",
+            "additionalProperties": True,
+            "properties": {
+                "symbol": {"type": "string"},
+                "underlying_price": {"type": ["number", "null"]},
+                "entries": {"type": "array", "items": {"type": "object"}},
+                "pagination": {"type": "object"},
+                "fields": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["symbol", "entries"],
+        },
+    }
+
+    base["portfolio.snapshot"] = {
+        "params": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "symbols": {"type": "array", "items": {"type": "string"}},
+                "intent": {"enum": list(QUOTE_INTENTS)},
+                "force": {"type": "boolean"},
+                "exposure_by": {"enum": ["sector", "asset_class", "currency", "symbol"]},
+            },
+        },
+        "result": {
+            "type": "object",
+            "additionalProperties": True,
+            "required": [
+                "timestamp",
+                "symbols",
+                "quotes",
+                "positions",
+                "balance",
+                "pnl",
+                "risk_limits",
+                "risk_halted",
+                "connection",
+            ],
+        },
+    }
+
+    base["order.place"] = {
+        "params": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "side": {"enum": ["buy", "sell"]},
+                "symbol": {"type": "string"},
+                "qty": {"type": "number", "exclusiveMinimum": 0},
+                "limit": {"type": "number"},
+                "stop": {"type": "number"},
+                "tif": {"enum": ["DAY", "GTC", "IOC"]},
+                "client_order_id": {"type": "string"},
+                "idempotency_key": {"type": "string"},
+                "dry_run": {"type": "boolean"},
+            },
+            "required": ["side", "symbol", "qty"],
+        },
+        "result": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "order": {"type": "object"},
+                "dry_run": {"type": "boolean"},
+                "risk_check": {"type": "object"},
+                "submit_allowed": {"type": "boolean"},
+            },
+            "required": ["order", "dry_run", "risk_check", "submit_allowed"],
+        },
+    }
+
+    base["risk.check"] = {
+        "params": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "side": {"enum": ["buy", "sell"]},
+                "symbol": {"type": "string"},
+                "qty": {"type": "number", "exclusiveMinimum": 0},
+                "limit": {"type": "number"},
+                "stop": {"type": "number"},
+                "tif": {"enum": ["DAY", "GTC", "IOC"]},
+            },
+            "required": ["side", "symbol", "qty"],
+        },
+        "result": {"type": "object", "additionalProperties": True},
+    }
+
+    base["audit.commands"] = {
+        "params": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "source": {"enum": ["cli", "sdk", "ts_sdk"]},
+                "since": {"type": "string"},
+                "request_id": {"type": "string"},
+            },
+        },
+        "result": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {"commands": {"type": "array", "items": {"type": "object"}}},
+            "required": ["commands"],
+        },
+    }
+
+    base["schema.get"] = {
+        "params": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {"command": {"type": "string"}},
+        },
+        "result": {"type": "object", "additionalProperties": True},
+    }
+    return base
 
 
 def _unknown_command_error(command: str) -> BrokerError:

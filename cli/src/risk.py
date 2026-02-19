@@ -33,6 +33,7 @@ def check(
     tif: TIF = typer.Option(TIF.DAY, "--tif", case_sensitive=False, help="DAY, GTC, IOC."),
 ) -> None:
     state = get_state(ctx)
+    command = "risk.check"
     params: dict[str, object] = {"side": side.value, "symbol": symbol, "qty": qty, "tif": tif.value}
     if limit is not None:
         params["limit"] = limit
@@ -40,20 +41,33 @@ def check(
         params["stop"] = stop
 
     try:
-        data = run_async(daemon_request(state, "risk.check", params))
-        print_output(data, json_output=state.json_output)
+        result = run_async(daemon_request(state, command, params))
+        print_output(
+            result.data,
+            json_output=state.json_output,
+            command=command,
+            request_id=result.request_id,
+            strict=state.strict,
+        )
     except BrokerError as exc:
-        handle_error(exc, json_output=state.json_output)
+        handle_error(exc, json_output=state.json_output, command=command, strict=state.strict)
 
 
 @app.command("limits", help="Show current runtime risk limits.")
 def limits(ctx: typer.Context) -> None:
     state = get_state(ctx)
+    command = "risk.limits"
     try:
-        data = run_async(daemon_request(state, "risk.limits", {}))
-        print_output(data.get("limits", data), json_output=state.json_output, title="Risk Limits")
+        result = run_async(daemon_request(state, command, {}))
+        print_output(
+            result.data.get("limits", result.data),
+            json_output=state.json_output,
+            command=command,
+            request_id=result.request_id,
+            strict=state.strict,
+        )
     except BrokerError as exc:
-        handle_error(exc, json_output=state.json_output)
+        handle_error(exc, json_output=state.json_output, command=command, strict=state.strict)
 
 
 @app.command("set", help="Update a risk limit parameter at runtime.")
@@ -63,31 +77,52 @@ def set_limit(
     value: str = typer.Argument(..., help="New parameter value."),
 ) -> None:
     state = get_state(ctx)
+    command = "risk.set"
     try:
-        data = run_async(daemon_request(state, "risk.set", {"param": param, "value": value}))
-        print_output(data.get("limits", data), json_output=state.json_output, title="Risk Limits")
+        result = run_async(daemon_request(state, command, {"param": param, "value": value}))
+        print_output(
+            result.data.get("limits", result.data),
+            json_output=state.json_output,
+            command=command,
+            request_id=result.request_id,
+            strict=state.strict,
+        )
     except BrokerError as exc:
-        handle_error(exc, json_output=state.json_output)
+        handle_error(exc, json_output=state.json_output, command=command, strict=state.strict)
 
 
 @app.command("halt", help="Emergency halt: cancel open orders and reject new orders.")
 def halt(ctx: typer.Context) -> None:
     state = get_state(ctx)
+    command = "risk.halt"
     try:
-        data = run_async(daemon_request(state, "risk.halt", {}))
-        print_output(data, json_output=state.json_output)
+        result = run_async(daemon_request(state, command, {}))
+        print_output(
+            result.data,
+            json_output=state.json_output,
+            command=command,
+            request_id=result.request_id,
+            strict=state.strict,
+        )
     except BrokerError as exc:
-        handle_error(exc, json_output=state.json_output)
+        handle_error(exc, json_output=state.json_output, command=command, strict=state.strict)
 
 
 @app.command("resume", help="Resume trading after a risk halt.")
 def resume(ctx: typer.Context) -> None:
     state = get_state(ctx)
+    command = "risk.resume"
     try:
-        data = run_async(daemon_request(state, "risk.resume", {}))
-        print_output(data, json_output=state.json_output)
+        result = run_async(daemon_request(state, command, {}))
+        print_output(
+            result.data,
+            json_output=state.json_output,
+            command=command,
+            request_id=result.request_id,
+            strict=state.strict,
+        )
     except BrokerError as exc:
-        handle_error(exc, json_output=state.json_output)
+        handle_error(exc, json_output=state.json_output, command=command, strict=state.strict)
 
 
 @app.command("override", help="Apply a temporary risk override with required reason and duration.")
@@ -99,14 +134,21 @@ def override(
     reason: str = typer.Option(..., "--reason", help="Required audit reason for the override."),
 ) -> None:
     state = get_state(ctx)
+    command = "risk.override"
     try:
-        data = run_async(
+        result = run_async(
             daemon_request(
                 state,
-                "risk.override",
+                command,
                 {"param": param, "value": value, "duration": duration, "reason": reason},
             )
         )
-        print_output(data.get("override", data), json_output=state.json_output)
+        print_output(
+            result.data.get("override", result.data),
+            json_output=state.json_output,
+            command=command,
+            request_id=result.request_id,
+            strict=state.strict,
+        )
     except BrokerError as exc:
-        handle_error(exc, json_output=state.json_output)
+        handle_error(exc, json_output=state.json_output, command=command, strict=state.strict)

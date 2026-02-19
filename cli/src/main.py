@@ -10,6 +10,7 @@ import market
 import orders
 import portfolio
 import risk
+import schema_cmd
 import update
 from _common import CLIState, build_typer, load_config
 
@@ -19,7 +20,7 @@ app = build_typer(
     Examples:
       broker quote AAPL MSFT
       broker order buy AAPL 10 --limit 180
-      broker risk check --side buy --symbol AAPL --qty 50
+      broker check --side buy --symbol AAPL --qty 50
     """
 )
 
@@ -35,12 +36,20 @@ app.command("orders", help="List orders with optional filters.")(orders.orders)
 app.command("cancel", help="Cancel one order, or all open orders with --all.")(orders.cancel)
 app.command("fills", help="List fills/execution history.")(orders.fills)
 app.command("update", help="Sync broker-cli source checkout to latest origin/main.")(update.update)
+app.command("schema", help="Show machine-readable JSON schema for daemon command payloads.")(schema_cmd.schema)
 
 
 @app.callback()
-def root(ctx: typer.Context) -> None:
+def root(
+    ctx: typer.Context,
+    strict: bool = typer.Option(
+        False,
+        "--strict/--no-strict",
+        help="Enable strict mode for commands that can treat empty market payloads as errors.",
+    ),
+) -> None:
     cfg = load_config()
-    ctx.obj = CLIState(config=cfg, json_output=True)
+    ctx.obj = CLIState(config=cfg, json_output=True, strict=strict)
 
 
 def run() -> None:

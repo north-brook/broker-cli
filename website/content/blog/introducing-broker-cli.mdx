@@ -18,14 +18,14 @@ Install broker-cli, and your agent gets a full trading interface through the ter
 
 ```bash
 broker quote AAPL MSFT          # Get quotes
-broker positions                # View portfolio
+broker snapshot --symbols AAPL,MSFT
 broker exposure --by symbol     # Analyze risk
-broker order buy AAPL 100       # Place orders
-broker chain AAPL --type call   # Option chains with greeks
+broker order buy AAPL 100 --dry-run --idempotency-key aapl-100
+broker chain AAPL --type call --limit 50 --fields strike,expiry,bid,ask
 broker cancel --all             # Cancel everything
 ```
 
-Every command outputs JSON. Every action is deterministic. No SDKs, no API keys to manage, no custom integrations — just shell commands.
+Every command returns a deterministic JSON envelope: `{ok,data,error,meta}`. No SDKs, no API keys to manage, no custom integrations — just shell commands.
 
 ## The SKILL.md advantage
 
@@ -35,9 +35,9 @@ broker-cli ships with a `SKILL.md` file that agents read automatically. This mea
 $ codex exec "Check my portfolio. If any position exceeds 20% of NLV, trim it to 15%."
 
 agent → reading SKILL.md...
-agent → broker exposure --by symbol --json
+agent → broker exposure --by symbol
 agent → TSLA is 34.2% of NLV. Reducing to 15%.
-agent → broker order sell TSLA 142 --limit 248.50
+agent → broker order sell TSLA 142 --limit 248.50 --dry-run --idempotency-key rebalance-tsla
 ✓ Order placed. TSLA exposure now 15.1% of NLV.
 ```
 
@@ -59,9 +59,9 @@ broker-cli currently supports **Interactive Brokers** and **E\*Trade**, with a u
 We built broker-cli with guardrails:
 
 - **Paper trading mode** — `broker daemon start --paper` for risk-free testing
-- **Pre-trade risk checks** — `broker risk check` validates orders before submission
+- **Pre-trade risk checks** — `broker check` validates orders before submission
 - **Exposure analysis** — real-time breakdown by symbol, sector, or asset class
-- **Emergency halt** — `broker risk halt` cancels everything and blocks new orders
+- **Emergency halt** — `broker halt` cancels everything and blocks new orders
 - **Cancel all** — instant position flattening when needed
 
 ## Get started

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 from difflib import get_close_matches
 import json
 import os
@@ -13,6 +14,7 @@ import sys
 import time
 from dataclasses import dataclass
 from typing import Any
+import uuid
 
 import click
 import typer
@@ -32,6 +34,17 @@ HELP_CONTEXT_SETTINGS = {
 class CLIState:
     config: AppConfig
     json_output: bool
+    strict: bool
+
+
+@dataclass
+class DaemonRPCResult:
+    command: str
+    request_id: str
+    data: Any
+
+
+RESPONSE_SCHEMA_VERSION = "v1"
 
 
 class SuggestionGroup(TyperGroup):
@@ -76,10 +89,41 @@ def run_async(awaitable: Any) -> Any:
     return asyncio.run(awaitable)
 
 
-def print_output(data: Any, *, json_output: bool, title: str | None = None) -> None:
+def build_meta(
+    *,
+    command: str,
+    request_id: str | None = None,
+    strict: bool | None = None,
+) -> dict[str, Any]:
+    meta: dict[str, Any] = {
+        "schema_version": RESPONSE_SCHEMA_VERSION,
+        "command": command,
+        "request_id": request_id or str(uuid.uuid4()),
+        "timestamp": datetime.now(UTC).isoformat(),
+    }
+    if strict is not None:
+        meta["strict"] = strict
+    return meta
+
+
+def print_output(
+    data: Any,
+    *,
+    json_output: bool,
+    command: str,
+    request_id: str | None = None,
+    title: str | None = None,
+    strict: bool | None = None,
+) -> None:
     _ = json_output
     _ = title
-    print(json.dumps(data, default=str, separators=(",", ":")))
+    payload = {
+        "ok": True,
+        "data": data,
+        "error": None,
+        "meta": build_meta(command=command, request_id=request_id, strict=strict),
+    }
+    print(json.dumps(payload, default=str, separators=(",", ":")))
 
 
 def parse_csv_items(raw: str, *, field_name: str) -> list[str]:
@@ -102,20 +146,33 @@ def validate_allowed_values(
     return values
 
 
-def handle_error(exc: BrokerError, *, json_output: bool) -> None:
+def handle_error(
+    exc: BrokerError,
+    *,
+    json_output: bool,
+    command: str,
+    request_id: str | None = None,
+    strict: bool | None = None,
+) -> None:
     suggestion = exc.suggestion or _default_suggestion(exc.code)
     error_payload = exc.to_error_payload()
     if suggestion and "suggestion" not in error_payload:
         error_payload["suggestion"] = suggestion
-    payload = {"ok": False, "error": error_payload}
+    payload = {
+        "ok": False,
+        "data": None,
+        "error": error_payload,
+        "meta": build_meta(command=command, request_id=request_id, strict=strict),
+    }
     _ = json_output
     print(json.dumps(payload, default=str, separators=(",", ":")))
     raise typer.Exit(code=exc.exit_code)
 
 
-async def daemon_request(state: CLIState, command: str, params: dict[str, Any] | None = None) -> Any:
+async def daemon_request(state: CLIState, command: str, params: dict[str, Any] | None = None) -> DaemonRPCResult:
     async with Client(socket_path=state.config.runtime.socket_path, timeout_seconds=state.config.runtime.request_timeout_seconds) as cli:
-        return await cli._request(command, params or {}, source="cli")
+        result = await cli._request_with_meta(command, params or {}, source="cli")
+        return DaemonRPCResult(command=command, request_id=result.request_id, data=result.data)
 
 
 def start_daemon_process(
@@ -126,8 +183,8 @@ def start_daemon_process(
     socket_was_stale = False
     if cfg.runtime.socket_path.exists():
         try:
-            status = run_async(daemon_request(CLIState(cfg, json_output=True), "daemon.status", {}))
-            if status:
+            status = run_async(daemon_request(CLIState(cfg, json_output=True, strict=False), "daemon.status", {}))
+            if status.data:
                 return 0
         except Exception:
             socket_was_stale = True
@@ -162,7 +219,7 @@ def start_daemon_process(
     while time.time() < deadline:
         if cfg.runtime.socket_path.exists():
             try:
-                run_async(daemon_request(CLIState(cfg, json_output=True), "daemon.status", {}))
+                run_async(daemon_request(CLIState(cfg, json_output=True, strict=False), "daemon.status", {}))
                 return 0
             except Exception:
                 pass
@@ -215,6 +272,6 @@ def _default_suggestion(code: ErrorCode) -> str | None:
         ErrorCode.IB_DISCONNECTED: "Verify IB Gateway/TWS is running and the gateway host/port are correct.",
         ErrorCode.INVALID_ARGS: "Run `broker --help` or `<command> --help` for valid usage.",
         ErrorCode.TIMEOUT: "Retry the command or increase `runtime.request_timeout_seconds` in config.",
-        ErrorCode.RISK_HALTED: "Review `broker risk limits`, then run `broker risk resume` when appropriate.",
+        ErrorCode.RISK_HALTED: "Review `broker limits`, then run `broker resume` when appropriate.",
     }
     return suggestions.get(code)

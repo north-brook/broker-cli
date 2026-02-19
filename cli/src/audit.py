@@ -42,6 +42,7 @@ def orders(
     status: OrderStatusFilter | None = typer.Option(None, "--status", case_sensitive=False),
 ) -> None:
     state = get_state(ctx)
+    command = "audit.orders"
     params: dict[str, object] = {}
     if since:
         params["since"] = since
@@ -49,10 +50,16 @@ def orders(
         params["status"] = status.value
 
     try:
-        data = run_async(daemon_request(state, "audit.orders", params))
-        print_output(data.get("orders", []), json_output=state.json_output, title="Audit Orders")
+        result = run_async(daemon_request(state, command, params))
+        print_output(
+            result.data.get("orders", []),
+            json_output=state.json_output,
+            command=command,
+            request_id=result.request_id,
+            strict=state.strict,
+        )
     except BrokerError as exc:
-        handle_error(exc, json_output=state.json_output)
+        handle_error(exc, json_output=state.json_output, command=command, strict=state.strict)
 
 
 @app.command("commands", help="Query command invocation audit records.")
@@ -60,19 +67,29 @@ def commands(
     ctx: typer.Context,
     source: AuditSource | None = typer.Option(None, "--source", case_sensitive=False),
     since: str | None = typer.Option(None, "--since", help="YYYY-MM-DD"),
+    request_id: str | None = typer.Option(None, "--request-id", help="Filter by daemon request_id."),
 ) -> None:
     state = get_state(ctx)
+    command = "audit.commands"
     params: dict[str, object] = {}
     if source:
         params["source"] = source.value
     if since:
         params["since"] = since
+    if request_id:
+        params["request_id"] = request_id
 
     try:
-        data = run_async(daemon_request(state, "audit.commands", params))
-        print_output(data.get("commands", []), json_output=state.json_output, title="Audit Commands")
+        result = run_async(daemon_request(state, command, params))
+        print_output(
+            result.data.get("commands", []),
+            json_output=state.json_output,
+            command=command,
+            request_id=result.request_id,
+            strict=state.strict,
+        )
     except BrokerError as exc:
-        handle_error(exc, json_output=state.json_output)
+        handle_error(exc, json_output=state.json_output, command=command, strict=state.strict)
 
 
 @app.command("risk", help="Query risk event audit records.")
@@ -81,15 +98,22 @@ def risk(
     event_type: str | None = typer.Option(None, "--type"),
 ) -> None:
     state = get_state(ctx)
+    command = "audit.risk"
     params: dict[str, object] = {}
     if event_type:
         params["type"] = event_type
 
     try:
-        data = run_async(daemon_request(state, "audit.risk", params))
-        print_output(data.get("risk_events", []), json_output=state.json_output, title="Audit Risk")
+        result = run_async(daemon_request(state, command, params))
+        print_output(
+            result.data.get("risk_events", []),
+            json_output=state.json_output,
+            command=command,
+            request_id=result.request_id,
+            strict=state.strict,
+        )
     except BrokerError as exc:
-        handle_error(exc, json_output=state.json_output)
+        handle_error(exc, json_output=state.json_output, command=command, strict=state.strict)
 
 
 @app.command("export", help="Export audit rows to CSV.")
@@ -101,9 +125,11 @@ def export(
     since: str | None = typer.Option(None, "--since", help="YYYY-MM-DD"),
     status: OrderStatusFilter | None = typer.Option(None, "--status", case_sensitive=False, help="Order status filter."),
     source: AuditSource | None = typer.Option(None, "--source", case_sensitive=False),
+    request_id: str | None = typer.Option(None, "--request-id", help="Command-audit filter by request_id."),
     event_type: str | None = typer.Option(None, "--type", help="Risk event type filter."),
 ) -> None:
     state = get_state(ctx)
+    command = "audit.export"
     params: dict[str, object] = {"output": output, "format": fmt.value, "table": table.value}
     if since:
         params["since"] = since
@@ -111,11 +137,19 @@ def export(
         params["status"] = status.value
     if source:
         params["source"] = source.value
+    if request_id:
+        params["request_id"] = request_id
     if event_type:
         params["type"] = event_type
 
     try:
-        data = run_async(daemon_request(state, "audit.export", params))
-        print_output(data, json_output=state.json_output)
+        result = run_async(daemon_request(state, command, params))
+        print_output(
+            result.data,
+            json_output=state.json_output,
+            command=command,
+            request_id=result.request_id,
+            strict=state.strict,
+        )
     except BrokerError as exc:
-        handle_error(exc, json_output=state.json_output)
+        handle_error(exc, json_output=state.json_output, command=command, strict=state.strict)

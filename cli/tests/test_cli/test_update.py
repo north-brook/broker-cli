@@ -42,8 +42,10 @@ def test_update_syncs_to_origin_main_and_reinstalls(monkeypatch: pytest.MonkeyPa
     assert result.exit_code == 0, result.stdout
 
     payload = json.loads(result.stdout)
-    assert payload == {
-        "ok": True,
+    assert payload["ok"] is True
+    assert payload["error"] is None
+    assert payload["meta"]["command"] == "update.sync"
+    assert payload["data"] == {
         "repo": str(repo_root),
         "branch": "main",
         "from": "aaa111",
@@ -78,6 +80,7 @@ def test_update_fails_when_worktree_is_dirty_without_force(monkeypatch: pytest.M
 
     payload = json.loads(result.stdout)
     assert payload["ok"] is False
+    assert payload["data"] is None
     assert payload["error"]["code"] == "UPDATE_FAILED"
     assert "Re-run with --force" in payload["error"]["message"]
     assert ("fetch", "origin", "main") not in git_calls

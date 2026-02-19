@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import AsyncIterator, Iterable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
@@ -15,6 +16,7 @@ from broker_sdk.types import (
     AuditSource,
     AuditTable,
     BarSize,
+    ChainField,
     EventTopic,
     ExposureGroupBy,
     HistoryPeriod,
@@ -44,7 +46,19 @@ class Client:
     async def __aexit__(self, *_: object) -> None:
         return None
 
-    async def _request(self, command: str, params: dict[str, Any] | None = None, *, source: str = "sdk") -> Any:
+    @dataclass(slots=True)
+    class DaemonResult:
+        request_id: str
+        command: str
+        data: Any
+
+    async def _request_with_meta(
+        self,
+        command: str,
+        params: dict[str, Any] | None = None,
+        *,
+        source: str = "sdk",
+    ) -> DaemonResult:
         req = Request(command=command, params=params or {}, source=source)
         try:
             reader, writer = await asyncio.open_unix_connection(str(self._socket_path))
@@ -75,7 +89,15 @@ class Client:
         await _safe_wait_closed(writer)
 
         response = decode_response(payload)
-        return _unwrap_response(response)
+        return self.DaemonResult(
+            request_id=response.request_id,
+            command=command,
+            data=_unwrap_response(response),
+        )
+
+    async def _request(self, command: str, params: dict[str, Any] | None = None, *, source: str = "sdk") -> Any:
+        result = await self._request_with_meta(command, params, source=source)
+        return result.data
 
     async def subscribe_events(self, topics: Iterable[EventTopic]) -> AsyncIterator[dict[str, Any]]:
         """Stream daemon events for the requested topic list."""
@@ -145,10 +167,18 @@ class Client:
             params["symbols"] = symbols
         return await self._request("market.capabilities", params)
 
-    async def history(self, symbol: str, period: HistoryPeriod, bar: BarSize, rth_only: bool = False) -> list[dict[str, Any]]:
+    async def history(
+        self,
+        symbol: str,
+        period: HistoryPeriod,
+        bar: BarSize,
+        rth_only: bool = False,
+        *,
+        strict: bool = False,
+    ) -> list[dict[str, Any]]:
         data = await self._request(
             "market.history",
-            {"symbol": symbol, "period": period, "bar": bar, "rth_only": rth_only},
+            {"symbol": symbol, "period": period, "bar": bar, "rth_only": rth_only, "strict": strict},
         )
         return data.get("bars", [])
 
@@ -158,14 +188,21 @@ class Client:
         expiry: str | None = None,
         strike_range: str | None = None,
         option_type: OptionType | None = None,
+        *,
+        limit: int = 200,
+        offset: int = 0,
+        fields: list[ChainField] | None = None,
+        strict: bool = False,
     ) -> dict[str, Any]:
-        params: dict[str, Any] = {"symbol": symbol}
+        params: dict[str, Any] = {"symbol": symbol, "limit": limit, "offset": offset, "strict": strict}
         if expiry:
             params["expiry"] = expiry
         if strike_range:
             params["strike_range"] = strike_range
         if option_type:
             params["type"] = option_type
+        if fields:
+            params["fields"] = list(fields)
         return await self._request("market.chain", params)
 
     async def order(
@@ -178,6 +215,8 @@ class Client:
         stop: float | None = None,
         tif: TimeInForce = "DAY",
         client_order_id: str | None = None,
+        idempotency_key: str | None = None,
+        dry_run: bool = False,
     ) -> dict[str, Any]:
         params: dict[str, Any] = {
             "side": side,
@@ -191,6 +230,10 @@ class Client:
             params["stop"] = stop
         if client_order_id:
             params["client_order_id"] = client_order_id
+        if idempotency_key:
+            params["idempotency_key"] = idempotency_key
+        if dry_run:
+            params["dry_run"] = True
         return await self._request("order.place", params)
 
     async def bracket(
@@ -246,6 +289,17 @@ class Client:
             params["symbol"] = symbol
         return await self._request("portfolio.positions", params)
 
+    async def snapshot(
+        self,
+        symbols: list[str] | None = None,
+        *,
+        exposure_by: ExposureGroupBy = "symbol",
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {"exposure_by": exposure_by}
+        if symbols:
+            params["symbols"] = symbols
+        return await self._request("portfolio.snapshot", params)
+
     async def pnl(self) -> dict[str, Any]:
         return await self._request("portfolio.pnl")
 
@@ -298,12 +352,19 @@ class Client:
     async def keepalive(self) -> dict[str, Any]:
         return await self._request("runtime.keepalive", {"sent_at": time.time()})
 
-    async def audit_commands(self, source: AuditSource | None = None, since: str | None = None) -> dict[str, Any]:
+    async def audit_commands(
+        self,
+        source: AuditSource | None = None,
+        since: str | None = None,
+        request_id: str | None = None,
+    ) -> dict[str, Any]:
         params: dict[str, Any] = {}
         if source:
             params["source"] = source
         if since:
             params["since"] = since
+        if request_id:
+            params["request_id"] = request_id
         return await self._request("audit.commands", params)
 
     async def audit_orders(self, status: OrderStatusFilter | None = None, since: str | None = None) -> dict[str, Any]:
@@ -329,6 +390,7 @@ class Client:
         since: str | None = None,
         status: OrderStatusFilter | None = None,
         source: AuditSource | None = None,
+        request_id: str | None = None,
         event_type: str | None = None,
     ) -> dict[str, Any]:
         params: dict[str, Any] = {"output": output, "table": table, "format": fmt}
@@ -338,9 +400,17 @@ class Client:
             params["status"] = status
         if source:
             params["source"] = source
+        if request_id:
+            params["request_id"] = request_id
         if event_type:
             params["type"] = event_type
         return await self._request("audit.export", params)
+
+    async def schema(self, command: str | None = None) -> dict[str, Any]:
+        params: dict[str, Any] = {}
+        if command:
+            params["command"] = command
+        return await self._request("schema.get", params)
 
 
 def _unwrap_response(response: Response) -> Any:

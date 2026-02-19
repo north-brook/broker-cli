@@ -34,6 +34,7 @@ import type {
   HistoryPeriod,
   MarketCapabilitiesResponse,
   MarketHistoryResponse,
+  ChainField,
   OptionType,
   OptionChainResponse,
   OrderBracketResponse,
@@ -48,6 +49,7 @@ import type {
   PortfolioExposureResponse,
   PortfolioPnLResponse,
   PortfolioPositionsResponse,
+  PortfolioSnapshotResponse,
   QuoteIntent,
   QuoteSnapshotResponse,
   RiskCheckInput,
@@ -168,16 +170,29 @@ export class Client {
     return this.request("market.capabilities", params);
   }
 
-  async history(symbol: string, period: HistoryPeriod, bar: BarSize, rthOnly = false): Promise<MarketHistoryResponse> {
+  async history(
+    symbol: string,
+    period: HistoryPeriod,
+    bar: BarSize,
+    rthOnly = false,
+    strict = false
+  ): Promise<MarketHistoryResponse> {
     return this.request("market.history", {
       symbol,
       period,
       bar,
-      rth_only: rthOnly
+      rth_only: rthOnly,
+      strict
     });
   }
 
-  async chain(symbol: string, expiry?: string, strikeRange?: string, optionType?: OptionType): Promise<OptionChainResponse> {
+  async chain(
+    symbol: string,
+    expiry?: string,
+    strikeRange?: string,
+    optionType?: OptionType,
+    options: { limit?: number; offset?: number; fields?: ChainField[]; strict?: boolean } = {}
+  ): Promise<OptionChainResponse> {
     const params: CommandParams<"market.chain"> = { symbol };
     if (expiry) {
       params.expiry = expiry;
@@ -187,6 +202,18 @@ export class Client {
     }
     if (optionType) {
       params.type = optionType;
+    }
+    if (options.limit !== undefined) {
+      params.limit = options.limit;
+    }
+    if (options.offset !== undefined) {
+      params.offset = options.offset;
+    }
+    if (options.fields) {
+      params.fields = options.fields;
+    }
+    if (options.strict !== undefined) {
+      params.strict = options.strict;
     }
     return this.request("market.chain", params);
   }
@@ -207,6 +234,14 @@ export class Client {
     return this.request("portfolio.exposure", { by });
   }
 
+  async snapshot(symbols?: string[], exposureBy: ExposureGroupBy = "symbol"): Promise<PortfolioSnapshotResponse> {
+    const params: CommandParams<"portfolio.snapshot"> = { exposure_by: exposureBy };
+    if (symbols && symbols.length > 0) {
+      params.symbols = symbols;
+    }
+    return this.request("portfolio.snapshot", params);
+  }
+
   async order(input: OrderInput): Promise<OrderPlaceResponse> {
     const params: CommandParams<"order.place"> = {
       side: input.side,
@@ -222,6 +257,12 @@ export class Client {
     }
     if (input.client_order_id) {
       params.client_order_id = input.client_order_id;
+    }
+    if (input.idempotency_key) {
+      params.idempotency_key = input.idempotency_key;
+    }
+    if (input.dry_run !== undefined) {
+      params.dry_run = input.dry_run;
     }
     return this.request("order.place", params);
   }
@@ -321,13 +362,16 @@ export class Client {
     });
   }
 
-  async auditCommands(source?: AuditSource, since?: string): Promise<AuditCommandsResponse> {
+  async auditCommands(source?: AuditSource, since?: string, requestId?: string): Promise<AuditCommandsResponse> {
     const params: CommandParams<"audit.commands"> = {};
     if (source) {
       params.source = source;
     }
     if (since) {
       params.since = since;
+    }
+    if (requestId) {
+      params.request_id = requestId;
     }
     return this.request("audit.commands", params);
   }
@@ -358,6 +402,7 @@ export class Client {
     since?: string;
     status?: OrderStatusFilter;
     source?: AuditSource;
+    request_id?: string;
     type?: string;
   }): Promise<AuditExportResponse> {
     return this.request("audit.export", {
@@ -367,8 +412,17 @@ export class Client {
       since: input.since,
       status: input.status,
       source: input.source,
+      request_id: input.request_id,
       type: input.type
     });
+  }
+
+  async schema(command?: string): Promise<Record<string, JsonValue>> {
+    const params: CommandParams<"schema.get"> = {};
+    if (command) {
+      params.command = command;
+    }
+    return this.request("schema.get", params);
   }
 
   private async openSocket(): Promise<net.Socket> {

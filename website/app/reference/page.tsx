@@ -136,7 +136,11 @@ export default function ReferencePage() {
         <div>
           <h1 className="text-3xl font-bold mb-2">Command Reference</h1>
           <p className="text-[var(--muted)]">
-            Complete reference for every broker-cli command. All commands output JSON by default.
+            Complete reference for every broker-cli command. Every response uses a stable JSON envelope:
+            <code className="mx-1 text-[var(--foreground)]">{`{ok,data,error,meta}`}</code>
+            with request IDs for tracing and audit correlation.
+            Use global <code className="mx-1 text-[var(--foreground)]">--strict</code> (or command-level strict flags where available)
+            when agents should treat empty market payloads as errors.
           </p>
         </div>
 
@@ -160,7 +164,14 @@ export default function ReferencePage() {
               { flag: "--force", description: "Discard tracked local changes before syncing" },
               { flag: "--reinstall / --no-reinstall", description: "Reinstall editable packages after syncing" },
             ]}
-            example={`$ broker update\n{"ok": true, "updated": true, "branch": "main", ...}`}
+            example={`$ broker update\n{"ok":true,"data":{"updated":true,"branch":"main","from":"...","to":"..."},"error":null,"meta":{"schema_version":"v1","command":"update.sync","request_id":"...","timestamp":"..."}}`}
+          />
+          <Cmd
+            name="broker schema"
+            description="Return machine-readable JSON Schema for command params/results."
+            usage="broker schema [COMMAND]"
+            example={`$ broker schema quote.snapshot\n{"ok":true,"data":{"schema_version":"v1","command":"quote.snapshot","schema":{"params":{...},"result":{...}},"envelope":{...}},"error":null,"meta":{"schema_version":"v1","command":"schema.get","request_id":"...","timestamp":"..."}}`}
+            notes="Use this in agent bootstrapping to validate payloads before command execution."
           />
           <Cmd
             name="broker uninstall"
@@ -189,19 +200,19 @@ export default function ReferencePage() {
               { flag: "--gateway HOST:PORT", description: "Override gateway endpoint" },
               { flag: "--client-id INT", description: "Override IB client ID" },
             ]}
-            example={`$ broker daemon start\n{"ok": true, "socket": "~/.local/state/broker/broker.sock"}\n\n$ broker daemon start --paper\n{"ok": true, "socket": "~/.local/state/broker/broker.sock"}`}
+            example={`$ broker daemon start\n{"ok":true,"data":{"socket":"~/.local/state/broker/broker.sock"},"error":null,"meta":{"schema_version":"v1","command":"daemon.start","request_id":"...","timestamp":"..."}}\n\n$ broker daemon start --paper\n{"ok":true,"data":{"socket":"~/.local/state/broker/broker.sock"},"error":null,"meta":{"schema_version":"v1","command":"daemon.start","request_id":"...","timestamp":"..."}}`}
           />
           <Cmd
             name="broker daemon stop"
             description="Request graceful daemon shutdown."
             usage="broker daemon stop"
-            example={`$ broker daemon stop\n{"ok": true}`}
+            example={`$ broker daemon stop\n{"ok":true,"data":{"stopping":true},"error":null,"meta":{"schema_version":"v1","command":"daemon.stop","request_id":"...","timestamp":"..."}}`}
           />
           <Cmd
             name="broker daemon status"
             description="Show daemon uptime, broker connection state, and risk halt status."
             usage="broker daemon status"
-            example={`$ broker daemon status\n{"uptime": 3421, "connected": true, "provider": "etrade", "halted": false}`}
+            example={`$ broker daemon status\n{"ok":true,"data":{"uptime_seconds":3421.4,"connection":{"connected":true,"account_id":"..."},"risk_halted":false,"socket":"~/.local/state/broker/broker.sock"},"error":null,"meta":{"schema_version":"v1","command":"daemon.status","request_id":"...","timestamp":"..."}}`}
           />
           <Cmd
             name="broker daemon restart"
@@ -223,7 +234,7 @@ export default function ReferencePage() {
             name="broker quote"
             description="Snapshot quote for one or more symbols."
             usage="broker quote SYMBOL [SYMBOL...]"
-            example={`$ broker quote AAPL MSFT\n[\n  {"symbol": "AAPL", "bid": 185.20, "ask": 185.25, "last": 185.22, "volume": 48291033},\n  {"symbol": "MSFT", "bid": 412.10, "ask": 412.15, "last": 412.12, "volume": 22104891}\n]`}
+            example={`$ broker quote AAPL MSFT\n{"ok":true,"data":[{"symbol":"AAPL","bid":185.2,"ask":185.25,"last":185.22,"volume":48291033},{"symbol":"MSFT","bid":412.1,"ask":412.15,"last":412.12,"volume":22104891}],"error":null,"meta":{"schema_version":"v1","command":"quote.snapshot","request_id":"...","timestamp":"..."}}`}
           />
           <Cmd
             name="broker watch"
@@ -237,18 +248,22 @@ export default function ReferencePage() {
               },
               { flag: "--interval INTERVAL", description: "Refresh rate (e.g. 250ms, 1s, 2m)", default: "1s" },
             ]}
-            example={`$ broker watch AAPL --fields bid,ask,last --interval 500ms`}
+            example={`$ broker watch AAPL --fields bid,ask,last --interval 500ms\n{"ok":true,"data":{"bid":185.2,"ask":185.25,"last":185.22},"error":null,"meta":{"schema_version":"v1","command":"quote.watch","request_id":"...","timestamp":"..."}}`}
           />
           <Cmd
             name="broker chain"
-            description="Fetch an option chain with optional expiry, strike range, and type filters. Includes greeks."
+            description="Fetch an option chain with paging and field selection controls for agent-efficient payloads."
             usage="broker chain SYMBOL [OPTIONS]"
             flags={[
               { flag: "--expiry YYYY-MM", description: "Filter by expiration month" },
-              { flag: "--strike-range LOW:HIGH", description: "Ratio range around current price (e.g. 0.9:1.1)" },
+              { flag: "--strike-range LOW:HIGH", description: "Relative range around current price", default: "0.9:1.1" },
               { flag: "--type call|put", description: "Filter by option type" },
+              { flag: "--limit INT", description: "Max entries returned after filtering", default: "200" },
+              { flag: "--offset INT", description: "Offset into filtered entries", default: "0" },
+              { flag: "--fields LIST", description: "Comma-separated entry fields (e.g. strike,expiry,bid,ask)" },
+              { flag: "--strict / --no-strict", description: "Error if no entries match filters" },
             ]}
-            example={`$ broker chain AAPL --type call --expiry 2026-03\n[\n  {\n    "symbol": "AAPL260320C185",\n    "expiry": "2026-03-20",\n    "strike": 185.0,\n    "type": "call",\n    "bid": 4.20,\n    "ask": 4.35,\n    "delta": 0.52,\n    "gamma": 0.04,\n    "theta": -0.08,\n    "vega": 0.31,\n    "iv": 0.28\n  },\n  ...\n]`}
+            example={`$ broker chain AAPL --type call --strike-range 0.95:1.05 --limit 5 --fields strike,expiry,bid,ask\n{"ok":true,"data":{"symbol":"AAPL","underlying_price":263.3,"entries":[{"strike":252.5,"expiry":"2026-02-20","bid":null,"ask":null}],"pagination":{"total_entries":80,"offset":0,"limit":5,"returned_entries":5},"fields":["strike","expiry","bid","ask"]},"error":null,"meta":{"schema_version":"v1","command":"market.chain","request_id":"...","timestamp":"..."}}`}
           />
           <Cmd
             name="broker history"
@@ -258,8 +273,9 @@ export default function ReferencePage() {
               { flag: "--period 1d|5d|30d|90d|1y", description: "Lookback period" },
               { flag: "--bar 1m|5m|15m|1h|1d", description: "Bar size" },
               { flag: "--rth-only", description: "Restrict to regular trading hours" },
+              { flag: "--strict / --no-strict", description: "Error when no bars are returned" },
             ]}
-            example={`$ broker history AAPL --period 5d --bar 1h`}
+            example={`$ broker history AAPL --period 5d --bar 1h\n{"ok":true,"data":[{"symbol":"AAPL","time":"2026-02-18T00:00:00","open":265.1,"close":263.29}],"error":null,"meta":{"schema_version":"v1","command":"market.history","request_id":"...","timestamp":"..."}}`}
             notes="Available on Interactive Brokers only."
           />
         </Section>
@@ -278,8 +294,10 @@ export default function ReferencePage() {
               { flag: "--limit PRICE", description: "Limit price (creates limit order)" },
               { flag: "--stop PRICE", description: "Stop trigger price (creates stop order)" },
               { flag: "--tif DAY|GTC|IOC", description: "Time in force", default: "DAY" },
+              { flag: "--dry-run", description: "Evaluate order risk but do not submit" },
+              { flag: "--idempotency-key KEY", description: "Stable retry key mapped to client_order_id" },
             ]}
-            example={`$ broker order buy AAPL 100 --limit 185.00\n{"order_id": "a1b2c3", "status": "submitted", "symbol": "AAPL", "side": "buy", "qty": 100, "limit": 185.0}\n\n$ broker order buy TSLA 50\n{"order_id": "d4e5f6", "status": "submitted", "symbol": "TSLA", "side": "buy", "qty": 50, "type": "market"}`}
+            example={`$ broker order buy AAPL 100 --limit 185.00 --idempotency-key rebalance-aapl-1\n{"ok":true,"data":{"order":{"client_order_id":"rebalance-aapl-1","status":"Submitted"},"dry_run":false,"risk_check":{"ok":true,"reasons":[]},"submit_allowed":true},"error":null,"meta":{"schema_version":"v1","command":"order.place","request_id":"...","timestamp":"..."}}\n\n$ broker order buy AAPL 10 --limit 185 --dry-run\n{"ok":true,"data":{"order":{"client_order_id":"dryrun-...","status":"DryRunAccepted"},"dry_run":true,"risk_check":{"ok":true,"reasons":[]},"submit_allowed":true},"error":null,"meta":{"schema_version":"v1","command":"order.place","request_id":"...","timestamp":"..."}}`}
           />
           <Cmd
             name="broker order sell"
@@ -289,6 +307,8 @@ export default function ReferencePage() {
               { flag: "--limit PRICE", description: "Limit price" },
               { flag: "--stop PRICE", description: "Stop trigger price" },
               { flag: "--tif DAY|GTC|IOC", description: "Time in force", default: "DAY" },
+              { flag: "--dry-run", description: "Evaluate order risk but do not submit" },
+              { flag: "--idempotency-key KEY", description: "Stable retry key mapped to client_order_id" },
             ]}
             example={`$ broker order sell AAPL 50 --limit 190.00 --tif GTC`}
           />
@@ -310,7 +330,7 @@ export default function ReferencePage() {
             name="broker order status"
             description="Show status for a single order by client order ID."
             usage="broker order status ORDER_ID"
-            example={`$ broker order status a1b2c3\n{"order_id": "a1b2c3", "status": "filled", "filled_qty": 100, "avg_price": 185.02}`}
+            example={`$ broker order status a1b2c3\n{"ok":true,"data":{"client_order_id":"a1b2c3","status":"Filled","fill_qty":100,"fill_price":185.02},"error":null,"meta":{"schema_version":"v1","command":"order.status","request_id":"...","timestamp":"..."}}`}
           />
           <Cmd
             name="broker orders"
@@ -320,7 +340,7 @@ export default function ReferencePage() {
               { flag: "--status active|filled|cancelled|all", description: "Filter by status", default: "all" },
               { flag: "--since YYYY-MM-DD", description: "Filter by date" },
             ]}
-            example={`$ broker orders --status active`}
+            example={`$ broker orders --status active\n{"ok":true,"data":[{"client_order_id":"...","status":"Submitted","symbol":"AAPL"}],"error":null,"meta":{"schema_version":"v1","command":"orders.list","request_id":"...","timestamp":"..."}}`}
           />
           <Cmd
             name="broker cancel"
@@ -330,7 +350,7 @@ export default function ReferencePage() {
               { flag: "--all", description: "Cancel all open orders" },
               { flag: "--confirm", description: "Required with --all in interactive mode" },
             ]}
-            example={`$ broker cancel a1b2c3\n{"ok": true, "cancelled": "a1b2c3"}\n\n$ broker cancel --all\n{"ok": true, "cancelled": 3, "failed": 0}`}
+            example={`$ broker cancel a1b2c3\n{"ok":true,"data":{"client_order_id":"a1b2c3","cancelled":true},"error":null,"meta":{"schema_version":"v1","command":"order.cancel","request_id":"...","timestamp":"..."}}\n\n$ broker cancel --all\n{"ok":true,"data":{"cancelled":true},"error":null,"meta":{"schema_version":"v1","command":"orders.cancel_all","request_id":"...","timestamp":"..."}}`}
           />
           <Cmd
             name="broker fills"
@@ -340,7 +360,7 @@ export default function ReferencePage() {
               { flag: "--since YYYY-MM-DD", description: "Filter by date" },
               { flag: "--symbol SYMBOL", description: "Filter by symbol" },
             ]}
-            example={`$ broker fills --since 2026-02-01 --symbol AAPL`}
+            example={`$ broker fills --since 2026-02-01 --symbol AAPL\n{"ok":true,"data":[{"fill_id":"...","symbol":"AAPL","qty":100,"price":185.02}],"error":null,"meta":{"schema_version":"v1","command":"fills.list","request_id":"...","timestamp":"..."}}`}
           />
         </Section>
 
@@ -357,7 +377,7 @@ export default function ReferencePage() {
             flags={[
               { flag: "--symbol SYMBOL", description: "Filter to a single symbol" },
             ]}
-            example={`$ broker positions\n[\n  {"symbol": "AAPL", "qty": 200, "avg_cost": 178.50, "market_value": 37044.00, "unrealized_pnl": 344.00},\n  {"symbol": "MSFT", "qty": 100, "avg_cost": 405.20, "market_value": 41212.00, "unrealized_pnl": 692.00}\n]`}
+            example={`$ broker positions\n{"ok":true,"data":[{"symbol":"AAPL","qty":200,"avg_cost":178.5,"market_value":37044.0,"unrealized_pnl":344.0},{"symbol":"MSFT","qty":100,"avg_cost":405.2,"market_value":41212.0,"unrealized_pnl":692.0}],"error":null,"meta":{"schema_version":"v1","command":"portfolio.positions","request_id":"...","timestamp":"..."}}`}
           />
           <Cmd
             name="broker pnl"
@@ -368,14 +388,14 @@ export default function ReferencePage() {
               { flag: "--period PERIOD", description: "Named period (e.g. 7d)" },
               { flag: "--since YYYY-MM-DD", description: "Custom start date" },
             ]}
-            example={`$ broker pnl --today\n{"realized": 1250.00, "unrealized": 1036.00, "total": 2286.00}`}
+            example={`$ broker pnl --today\n{"ok":true,"data":{"date":"2026-02-19","realized":1250.0,"unrealized":1036.0,"total":2286.0},"error":null,"meta":{"schema_version":"v1","command":"portfolio.pnl","request_id":"...","timestamp":"..."}}`}
             notes="Only one of --today, --period, or --since can be used. Defaults to --today."
           />
           <Cmd
             name="broker balance"
             description="Show account balances and margin metrics."
             usage="broker balance"
-            example={`$ broker balance\n{"nlv": 125000.00, "cash": 42000.00, "buying_power": 84000.00, "margin_used": 41000.00}`}
+            example={`$ broker balance\n{"ok":true,"data":{"net_liquidation":125000.0,"cash":42000.0,"buying_power":84000.0,"margin_used":41000.0},"error":null,"meta":{"schema_version":"v1","command":"portfolio.balance","request_id":"...","timestamp":"..."}}`}
           />
           <Cmd
             name="broker exposure"
@@ -388,7 +408,17 @@ export default function ReferencePage() {
                 default: "symbol",
               },
             ]}
-            example={`$ broker exposure --by symbol\n[\n  {"group": "AAPL", "exposure_pct": 29.6, "market_value": 37044.00},\n  {"group": "MSFT", "exposure_pct": 33.0, "market_value": 41212.00},\n  {"group": "cash", "exposure_pct": 37.4, "market_value": 46744.00}\n]\n\n$ broker exposure --by sector\n[\n  {"group": "Technology", "exposure_pct": 62.6},\n  {"group": "cash", "exposure_pct": 37.4}\n]`}
+            example={`$ broker exposure --by symbol\n{"ok":true,"data":[{"key":"AAPL","exposure_pct":29.6},{"key":"MSFT","exposure_pct":33.0},{"key":"cash","exposure_pct":37.4}],"error":null,"meta":{"schema_version":"v1","command":"portfolio.exposure","request_id":"...","timestamp":"..."}}\n\n$ broker exposure --by sector\n{"ok":true,"data":[{"key":"Technology","exposure_pct":62.6},{"key":"cash","exposure_pct":37.4}],"error":null,"meta":{"schema_version":"v1","command":"portfolio.exposure","request_id":"...","timestamp":"..."}}`}
+          />
+          <Cmd
+            name="broker snapshot"
+            description="Single-call state snapshot for agent loops: quotes, positions, balance, pnl, exposure, limits, and connection."
+            usage="broker snapshot [OPTIONS]"
+            flags={[
+              { flag: "--symbols SYMBOLS", description: "Comma-separated symbol list for quote snapshot" },
+              { flag: "--exposure-by symbol|sector|asset_class|currency", description: "Exposure grouping", default: "symbol" },
+            ]}
+            example={`$ broker snapshot --symbols AAPL,MSFT\n{"ok":true,"data":{"symbols":["AAPL","MSFT"],"quotes":[...],"positions":[...],"balance":{...},"pnl":{...},"exposure":[...],"risk_limits":{...},"connection":{"connected":true}},"error":null,"meta":{"schema_version":"v1","command":"portfolio.snapshot","request_id":"...","timestamp":"..."}}`}
           />
         </Section>
 
@@ -399,9 +429,9 @@ export default function ReferencePage() {
           description="Pre-trade risk checks, runtime limits, emergency controls, and temporary overrides."
         >
           <Cmd
-            name="broker risk check"
+            name="broker check"
             description="Dry-run an order against risk limits without submitting. Use to validate before placing."
-            usage="broker risk check --side SIDE --symbol SYMBOL --qty QTY [OPTIONS]"
+            usage="broker check --side SIDE --symbol SYMBOL --qty QTY [OPTIONS]"
             flags={[
               { flag: "--side buy|sell", description: "Order side (required)" },
               { flag: "--symbol SYMBOL", description: "Ticker symbol (required)" },
@@ -410,41 +440,43 @@ export default function ReferencePage() {
               { flag: "--stop PRICE", description: "Stop trigger price" },
               { flag: "--tif DAY|GTC|IOC", description: "Time in force", default: "DAY" },
             ]}
-            example={`$ broker risk check --side buy --symbol AAPL --qty 500\n{"allowed": true, "checks": {"max_order_size": "pass", "concentration": "pass", "buying_power": "pass"}}\n\n$ broker risk check --side buy --symbol AAPL --qty 50000\n{"allowed": false, "checks": {"max_order_size": "fail"}, "reason": "qty 50000 exceeds max_order_size 10000"}`}
+            example={`$ broker check --side buy --symbol AAPL --qty 500 --limit 185\n{"ok":true,"data":{"ok":true,"reasons":[],"details":{"notional":92500.0}},"error":null,"meta":{"schema_version":"v1","command":"risk.check","request_id":"...","timestamp":"..."}}\n\n$ broker check --side buy --symbol AAPL --qty 50000 --limit 185\n{"ok":true,"data":{"ok":false,"reasons":["order notional ... exceeds max_order_value ..."],"details":{"notional":9250000.0},"suggestion":"reduce quantity to <= ..."},"error":null,"meta":{"schema_version":"v1","command":"risk.check","request_id":"...","timestamp":"..."}}`}
           />
           <Cmd
-            name="broker risk limits"
+            name="broker limits"
             description="Show current runtime risk limit parameters."
-            usage="broker risk limits"
-            example={`$ broker risk limits\n{"max_order_size": 10000, "max_position_pct": 0.35, "max_daily_loss": 5000, "max_open_orders": 50}`}
+            usage="broker limits"
+            example={`$ broker limits\n{"ok":true,"data":{"max_position_pct":10.0,"max_order_value":50000.0,"max_daily_loss_pct":2.0,"max_open_orders":20,"halted":false},"error":null,"meta":{"schema_version":"v1","command":"risk.limits","request_id":"...","timestamp":"..."}}`}
           />
           <Cmd
-            name="broker risk set"
+            name="broker set"
             description="Update a risk limit parameter at runtime."
-            usage="broker risk set PARAM VALUE"
-            example={`$ broker risk set max_order_size 5000\n{"max_order_size": 5000, ...}`}
+            usage="broker set PARAM VALUE"
+            example={`$ broker set max_order_value 25000\n{"ok":true,"data":{"max_order_value":25000.0,"halted":false},"error":null,"meta":{"schema_version":"v1","command":"risk.set","request_id":"...","timestamp":"..."}}`}
           />
           <Cmd
-            name="broker risk halt"
+            name="broker halt"
             description="Emergency halt: cancels all open orders and rejects new orders until resumed."
-            usage="broker risk halt"
-            example={`$ broker risk halt\n{"ok": true, "halted": true, "cancelled": 4}`}
+            usage="broker halt"
+            example={`$ broker halt\n{"ok":true,"data":{"halted":true},"error":null,"meta":{"schema_version":"v1","command":"risk.halt","request_id":"...","timestamp":"..."}}`}
           />
           <Cmd
-            name="broker risk resume"
+            name="broker resume"
             description="Resume normal trading after a risk halt."
-            usage="broker risk resume"
-            example={`$ broker risk resume\n{"ok": true, "halted": false}`}
+            usage="broker resume"
+            example={`$ broker resume\n{"ok":true,"data":{"halted":false},"error":null,"meta":{"schema_version":"v1","command":"risk.resume","request_id":"...","timestamp":"..."}}`}
           />
           <Cmd
-            name="broker risk override"
+            name="broker override"
             description="Apply a temporary risk limit override. Requires a reason and duration for audit trail."
-            usage="broker risk override PARAM VALUE --reason TEXT --duration DURATION"
+            usage="broker override --param PARAM --value VALUE --reason TEXT --duration DURATION"
             flags={[
+              { flag: "--param PARAM", description: "Risk parameter to override" },
+              { flag: "--value VALUE", description: "Temporary override value" },
               { flag: "--reason TEXT", description: "Required explanation for the override" },
               { flag: "--duration DURATION", description: "How long the override lasts (e.g. 1h, 30m)" },
             ]}
-            example={`$ broker risk override max_order_size 25000 --reason "large rebalance" --duration 1h`}
+            example={`$ broker override --param max_order_value --value 25000 --reason "large rebalance" --duration 1h\n{"ok":true,"data":{"param":"max_order_value","value":25000.0,"reason":"large rebalance","expires_at":"..."},"error":null,"meta":{"schema_version":"v1","command":"risk.override","request_id":"...","timestamp":"..."}}`}
           />
         </Section>
 
@@ -470,7 +502,9 @@ export default function ReferencePage() {
             flags={[
               { flag: "--source cli|sdk|ts_sdk", description: "Filter by source" },
               { flag: "--since YYYY-MM-DD", description: "Filter by date" },
+              { flag: "--request-id ID", description: "Filter to a single command execution trace" },
             ]}
+            example={`$ broker audit commands --request-id 647a8306-...\n{"ok":true,"data":[{"timestamp":"...","source":"cli","command":"order.place","result_code":0,"request_id":"647a8306-..."}],"error":null,"meta":{"schema_version":"v1","command":"audit.commands","request_id":"...","timestamp":"..."}}`}
           />
           <Cmd
             name="broker audit risk"
@@ -484,6 +518,7 @@ export default function ReferencePage() {
             flags={[
               { flag: "--table orders|commands|risk", description: "Which audit table to export" },
               { flag: "--format csv", description: "Output format", default: "csv" },
+              { flag: "--request-id ID", description: "When table=commands, filter export by request_id" },
             ]}
           />
         </Section>
@@ -507,7 +542,7 @@ export default function ReferencePage() {
             <div className="px-5 py-4 border-t border-[var(--border)]">
               <pre className="text-sm font-mono text-[var(--muted)] overflow-x-auto whitespace-pre">{`{
   "broker": {
-    "provider": "etrade",
+    "provider": "ib",
     "etrade": {
       "consumer_key": "...",
       "consumer_secret": "...",
@@ -516,10 +551,13 @@ export default function ReferencePage() {
       "password": "...",
       "sandbox": false
     },
-    "ibkr": {
-      "gateway_host": "127.0.0.1",
-      "gateway_port": 4001,
+    "gateway": {
+      "host": "127.0.0.1",
+      "port": 4002,
       "client_id": 1
+    },
+    "runtime": {
+      "request_timeout_seconds": 15
     }
   }
 }`}</pre>
@@ -539,7 +577,7 @@ export default function ReferencePage() {
               <table className="w-full text-sm">
                 <tbody>
                   {[
-                    ["BROKER_PROVIDER", "Provider name (etrade, ibkr)"],
+                    ["BROKER_PROVIDER", "Provider name (etrade, ib)"],
                     ["BROKER_ETRADE_CONSUMER_KEY", "E*Trade consumer key"],
                     ["BROKER_ETRADE_CONSUMER_SECRET", "E*Trade consumer secret"],
                     ["BROKER_ETRADE_USERNAME", "E*Trade username (persistent auth)"],

@@ -51,25 +51,23 @@ broker-cli is the reference implementation of this pattern. Its SKILL.md describ
 
 ## Commands
 
-### broker portfolio
-View all positions in your account.
+### broker snapshot
+Fetch a one-call account snapshot for agent loops.
 
 Flags:
-- `--json` — Output as JSON
-- `--broker <name>` — Target a specific broker
+- `--symbols SYMBOLS` — Optional comma-separated quote symbols
+- `--exposure-by symbol|sector|asset_class|currency` — Exposure grouping
 
 Example:
-$ broker portfolio
-Symbol  Qty   Value      P/L
-AAPL    100   $19,240    +$720
-NVDA    50    $47,100    +$2,100
+$ broker snapshot --symbols AAPL,NVDA
+{"ok":true,"data":{"symbols":["AAPL","NVDA"],"quotes":[...],"positions":[...],"balance":{...},"pnl":{...}},"error":null,"meta":{"schema_version":"v1","command":"portfolio.snapshot","request_id":"...","timestamp":"..."}}
 ```
 
 When an agent reads this, it immediately knows:
-- There's a `broker portfolio` command
-- It accepts `--json` and `--broker` flags
-- The output is a table with specific columns
-- It can parse the JSON output for programmatic use
+- There's a `broker snapshot` command
+- It accepts optional symbol and exposure controls
+- Responses are always in a predictable envelope
+- It can parse `data` while preserving `meta.request_id` for audit tracing
 
 Multiply this across every command — quotes, orders, options, risk management — and the agent has complete knowledge of the trading interface from a single file.
 

@@ -41,27 +41,46 @@ def start(
         typer.echo("Failed to start daemon. Check broker log (default: ~/.local/state/broker/broker.log).", err=True)
         raise typer.Exit(code=1)
 
-    print_output({"ok": True, "socket": str(state.config.runtime.socket_path)}, json_output=state.json_output)
+    print_output(
+        {"socket": str(state.config.runtime.socket_path)},
+        json_output=state.json_output,
+        command="daemon.start",
+        strict=state.strict,
+    )
 
 
 @app.command("stop", help="Request graceful daemon shutdown.")
 def stop(ctx: typer.Context) -> None:
     state = get_state(ctx)
+    command = "daemon.stop"
     try:
-        data = run_async(daemon_request(state, "daemon.stop", {}))
-        print_output(data, json_output=state.json_output)
+        result = run_async(daemon_request(state, command, {}))
+        print_output(
+            result.data,
+            json_output=state.json_output,
+            command=command,
+            request_id=result.request_id,
+            strict=state.strict,
+        )
     except BrokerError as exc:
-        handle_error(exc, json_output=state.json_output)
+        handle_error(exc, json_output=state.json_output, command=command, strict=state.strict)
 
 
 @app.command("status", help="Show daemon uptime, IB connection state, and risk halt status.")
 def status(ctx: typer.Context) -> None:
     state = get_state(ctx)
+    command = "daemon.status"
     try:
-        data = run_async(daemon_request(state, "daemon.status", {}))
-        print_output(data, json_output=state.json_output)
+        result = run_async(daemon_request(state, command, {}))
+        print_output(
+            result.data,
+            json_output=state.json_output,
+            command=command,
+            request_id=result.request_id,
+            strict=state.strict,
+        )
     except BrokerError as exc:
-        handle_error(exc, json_output=state.json_output)
+        handle_error(exc, json_output=state.json_output, command=command, strict=state.strict)
 
 
 @app.command("restart", help="Stop then start the daemon.")
@@ -70,8 +89,9 @@ def restart(
     paper: bool = typer.Option(False, "--paper", help="Restart using paper trading port (4002)."),
 ) -> None:
     state = get_state(ctx)
+    stop_command = "daemon.stop"
     try:
-        run_async(daemon_request(state, "daemon.stop", {}))
+        run_async(daemon_request(state, stop_command, {}))
     except Exception:
         pass
 
@@ -100,7 +120,12 @@ def restart(
     if code != 0:
         typer.echo("Failed to restart daemon. Check broker log (default: ~/.local/state/broker/broker.log).", err=True)
         raise typer.Exit(code=1)
-    print_output({"ok": True}, json_output=state.json_output)
+    print_output(
+        {"restarted": True},
+        json_output=state.json_output,
+        command="daemon.restart",
+        strict=state.strict,
+    )
 
 
 def _wait_for_daemon_shutdown(cfg: AppConfig, *, timeout_seconds: float) -> bool:
@@ -131,7 +156,7 @@ def _wait_for_daemon_shutdown(cfg: AppConfig, *, timeout_seconds: float) -> bool
 def _status_state(cfg: AppConfig):
     from _common import CLIState
 
-    return CLIState(cfg, json_output=True)
+    return CLIState(cfg, json_output=True, strict=False)
 
 
 def _read_pid_file(path: Path) -> int | None:

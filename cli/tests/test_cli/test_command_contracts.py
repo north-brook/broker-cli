@@ -12,6 +12,7 @@ import market
 import orders
 import portfolio
 import risk
+import schema_cmd
 from main import app
 
 _ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
@@ -52,7 +53,13 @@ def runner() -> CliRunner:
 def rpc(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, dict[str, Any]]]:
     calls: list[tuple[str, dict[str, Any]]] = []
 
-    async def fake_daemon_request(_: Any, command: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    class FakeRPCResult:
+        def __init__(self, command: str, data: dict[str, Any]) -> None:
+            self.command = command
+            self.request_id = "req-test"
+            self.data = data
+
+    async def fake_daemon_request(_: Any, command: str, params: dict[str, Any] | None = None) -> Any:
         payload = params or {}
         calls.append((command, payload))
         responses: dict[str, dict[str, Any]] = {
@@ -66,6 +73,7 @@ def rpc(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, dict[str, Any]]]:
             "portfolio.balance": {"balance": {"net_liquidation": 100000}},
             "portfolio.pnl": {"pnl": {"total": 0.0}},
             "portfolio.exposure": {"exposure": []},
+            "portfolio.snapshot": {"symbols": ["AAPL"], "quotes": [], "positions": []},
             "order.place": {"order": {"client_order_id": "cid-1"}},
             "order.bracket": {"parent_order": {"client_order_id": "cid-parent"}},
             "order.status": {"order": {"client_order_id": "cid-1", "status": "submitted"}},
@@ -83,10 +91,11 @@ def rpc(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, dict[str, Any]]]:
             "audit.orders": {"orders": []},
             "audit.risk": {"risk_events": []},
             "audit.export": {"output": "/tmp/audit.csv", "rows": 0},
+            "schema.get": {"schema_version": "v1", "commands": {}},
         }
-        return responses.get(command, {"ok": True})
+        return FakeRPCResult(command, responses.get(command, {"ok": True}))
 
-    for mod in (audit, daemon, market, orders, portfolio, risk):
+    for mod in (audit, daemon, market, orders, portfolio, risk, schema_cmd):
         monkeypatch.setattr(mod, "daemon_request", fake_daemon_request)
 
     return calls
@@ -119,7 +128,9 @@ def test_root_command_surface_contract(runner: CliRunner) -> None:
         "halt",
         "resume",
         "override",
+        "snapshot",
         "audit",
+        "schema",
     }
 
 
@@ -160,6 +171,7 @@ def test_subcommand_surface_contract(
         (["pnl", "--today"], "portfolio.pnl"),
         (["balance"], "portfolio.balance"),
         (["exposure"], "portfolio.exposure"),
+        (["snapshot"], "portfolio.snapshot"),
         (["check", "--side", "buy", "--symbol", "AAPL", "--qty", "1"], "risk.check"),
         (["limits"], "risk.limits"),
         (["set", "max_order_value", "1000"], "risk.set"),
@@ -170,6 +182,7 @@ def test_subcommand_surface_contract(
         (["audit", "commands"], "audit.commands"),
         (["audit", "risk"], "audit.risk"),
         (["audit", "export", "--output", "/tmp/audit.csv"], "audit.export"),
+        (["schema"], "schema.get"),
         (["daemon", "status"], "daemon.status"),
         (["daemon", "stop"], "daemon.stop"),
     ],
@@ -197,11 +210,20 @@ def test_watch_is_usable(monkeypatch: pytest.MonkeyPatch, runner: CliRunner, rpc
 
 
 def test_quote_warns_when_fields_are_all_null(monkeypatch: pytest.MonkeyPatch, runner: CliRunner) -> None:
-    async def fake_daemon_request(_: Any, command: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    class FakeRPCResult:
+        def __init__(self, command: str, data: dict[str, Any]) -> None:
+            self.command = command
+            self.request_id = "req-test"
+            self.data = data
+
+    async def fake_daemon_request(_: Any, command: str, params: dict[str, Any] | None = None) -> Any:
         _ = params
         if command == "quote.snapshot":
-            return {"quotes": [{"symbol": "AAPL", "bid": None, "ask": None, "last": None, "volume": None}]}
-        return {"ok": True}
+            return FakeRPCResult(
+                command,
+                {"quotes": [{"symbol": "AAPL", "bid": None, "ask": None, "last": None, "volume": None}]},
+            )
+        return FakeRPCResult(command, {"ok": True})
 
     monkeypatch.setattr(market, "daemon_request", fake_daemon_request)
 
@@ -243,10 +265,16 @@ def test_daemon_start_uses_start_helper(monkeypatch: pytest.MonkeyPatch, runner:
 def test_daemon_restart_uses_stop_and_start(monkeypatch: pytest.MonkeyPatch, runner: CliRunner) -> None:
     calls: list[str] = []
 
-    async def fake_daemon_request(_: Any, command: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    class FakeRPCResult:
+        def __init__(self, command: str, data: dict[str, Any]) -> None:
+            self.command = command
+            self.request_id = "req-test"
+            self.data = data
+
+    async def fake_daemon_request(_: Any, command: str, params: dict[str, Any] | None = None) -> Any:
         _ = params
         calls.append(command)
-        return {"ok": True}
+        return FakeRPCResult(command, {"ok": True})
 
     def fake_start(_: Any, *, extra_env: dict[str, str] | None = None) -> int:
         calls.append(f"start:{extra_env}")

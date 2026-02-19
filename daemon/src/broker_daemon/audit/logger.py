@@ -33,6 +33,7 @@ class AuditLogger:
         self._conn.row_factory = aiosqlite.Row
         for statement in SCHEMA_STATEMENTS:
             await self._execute_with_retry(statement, ())
+        await self._ensure_schema_migrations()
         await self._commit_with_retry()
 
     async def close(self) -> None:
@@ -72,15 +73,31 @@ class AuditLogger:
                     raise
                 await asyncio.sleep(SQLITE_LOCK_RETRY_DELAY_SECONDS)
 
-    async def log_command(self, source: str, command: str, arguments: dict[str, Any], result_code: int) -> None:
+    async def _ensure_schema_migrations(self) -> None:
+        columns = await self.fetch_all("PRAGMA table_info(commands)")
+        names = {str(row.get("name")) for row in columns}
+        if "request_id" not in names:
+            await self._execute_with_retry("ALTER TABLE commands ADD COLUMN request_id TEXT", ())
+        await self._execute_with_retry("CREATE INDEX IF NOT EXISTS idx_commands_request_id ON commands(request_id)", ())
+
+    async def log_command(
+        self,
+        source: str,
+        command: str,
+        arguments: dict[str, Any],
+        result_code: int,
+        *,
+        request_id: str | None = None,
+    ) -> None:
         await self._execute(
-            "INSERT INTO commands (timestamp, source, command, arguments, result_code) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO commands (timestamp, source, command, arguments, result_code, request_id) VALUES (?, ?, ?, ?, ?, ?)",
             (
                 datetime.now(UTC).isoformat(),
                 source,
                 command,
                 json.dumps(arguments, sort_keys=True),
                 result_code,
+                request_id,
             ),
         )
 

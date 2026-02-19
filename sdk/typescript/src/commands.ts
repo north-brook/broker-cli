@@ -16,6 +16,7 @@ import type {
   HistoryPeriod,
   MarketHistoryResponse,
   MarketCapabilitiesResponse,
+  ChainField,
   OptionType,
   OptionChainResponse,
   OrderBracketResponse,
@@ -30,6 +31,7 @@ import type {
   PortfolioExposureResponse,
   PortfolioPnLResponse,
   PortfolioPositionsResponse,
+  PortfolioSnapshotResponse,
   QuoteSnapshotResponse,
   QuoteIntent,
   RiskParam,
@@ -58,6 +60,7 @@ export interface CommandMap {
       period: HistoryPeriod;
       bar: BarSize;
       rth_only?: boolean;
+      strict?: boolean;
     },
     MarketHistoryResponse
   >;
@@ -67,6 +70,10 @@ export interface CommandMap {
       expiry?: string;
       strike_range?: string;
       type?: OptionType;
+      limit?: number;
+      offset?: number;
+      fields?: ChainField[];
+      strict?: boolean;
     },
     OptionChainResponse
   >;
@@ -74,6 +81,7 @@ export interface CommandMap {
   "portfolio.balance": CommandSpec<Record<string, never>, PortfolioBalanceResponse>;
   "portfolio.pnl": CommandSpec<Record<string, never>, PortfolioPnLResponse>;
   "portfolio.exposure": CommandSpec<{ by?: ExposureGroupBy }, PortfolioExposureResponse>;
+  "portfolio.snapshot": CommandSpec<{ symbols?: string[]; exposure_by?: ExposureGroupBy }, PortfolioSnapshotResponse>;
   "order.place": CommandSpec<
     {
       side: OrderSide;
@@ -83,6 +91,8 @@ export interface CommandMap {
       limit?: number;
       stop?: number;
       client_order_id?: string;
+      idempotency_key?: string;
+      dry_run?: boolean;
     },
     OrderPlaceResponse
   >;
@@ -128,7 +138,7 @@ export interface CommandMap {
     RiskOverrideResponse
   >;
   "runtime.keepalive": CommandSpec<{ sent_at?: number }, KeepaliveResponse>;
-  "audit.commands": CommandSpec<{ source?: AuditSource; since?: string }, AuditCommandsResponse>;
+  "audit.commands": CommandSpec<{ source?: AuditSource; since?: string; request_id?: string }, AuditCommandsResponse>;
   "audit.orders": CommandSpec<{ status?: OrderStatusFilter; since?: string }, AuditOrdersResponse>;
   "audit.risk": CommandSpec<{ type?: string }, AuditRiskResponse>;
   "audit.export": CommandSpec<
@@ -139,10 +149,12 @@ export interface CommandMap {
       since?: string;
       status?: OrderStatusFilter;
       source?: AuditSource;
+      request_id?: string;
       type?: string;
     },
     AuditExportResponse
   >;
+  "schema.get": CommandSpec<{ command?: string }, Record<string, JsonValue>>;
   "events.subscribe": CommandSpec<{ topics: EventTopic[] }, { subscribed: string[] }>;
 }
 

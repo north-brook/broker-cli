@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from enum import Enum
-import json
 import time
 
 import typer
@@ -52,6 +51,21 @@ class QuoteIntent(str, Enum):
 
 WATCH_FIELDS = {"symbol", "bid", "ask", "last", "volume", "timestamp", "exchange", "currency"}
 QUOTE_VALUE_FIELDS = ("bid", "ask", "last", "volume")
+CHAIN_FIELDS = {
+    "symbol",
+    "right",
+    "strike",
+    "expiry",
+    "bid",
+    "ask",
+    "implied_vol",
+    "delta",
+    "gamma",
+    "theta",
+    "vega",
+}
+DEFAULT_CHAIN_LIMIT = 200
+DEFAULT_CHAIN_STRIKE_RANGE = "0.9:1.1"
 
 
 @app.command("quote", help="Snapshot quote(s) for one or more symbols.")
@@ -70,11 +84,13 @@ def quote(
     ),
 ) -> None:
     state = get_state(ctx)
+    command = "quote.snapshot"
     try:
         params: dict[str, object] = {"symbols": symbols}
         if intent is not None:
             params["intent"] = intent.value
-        data = run_async(daemon_request(state, "quote.snapshot", params))
+        result = run_async(daemon_request(state, command, params))
+        data = result.data
         quotes = data.get("quotes", [])
         if isinstance(quotes, list):
             _warn_on_quote_results(
@@ -83,9 +99,15 @@ def quote(
                 intent=str(data.get("intent") or state.config.market_data.quote_intent_default),
                 provider_capabilities=data.get("provider_capabilities"),
             )
-        print_output(quotes, json_output=state.json_output, title="Quotes")
+        print_output(
+            quotes,
+            json_output=state.json_output,
+            command=command,
+            request_id=result.request_id,
+            strict=state.strict,
+        )
     except BrokerError as exc:
-        handle_error(exc, json_output=state.json_output)
+        handle_error(exc, json_output=state.json_output, command=command, strict=state.strict)
 
 
 @app.command("watch", help="Continuously refresh quote fields in the shell (Ctrl+C to stop).")
@@ -106,6 +128,7 @@ def watch(
     ),
 ) -> None:
     state = get_state(ctx)
+    command = "quote.watch"
     interval_seconds = _parse_interval(interval)
     chosen_fields = _parse_fields(fields)
 
@@ -114,15 +137,22 @@ def watch(
             params: dict[str, object] = {"symbols": [symbol], "force": True}
             if intent is not None:
                 params["intent"] = intent.value
-            data = run_async(daemon_request(state, "quote.snapshot", params))
+            result = run_async(daemon_request(state, "quote.snapshot", params))
+            data = result.data
             quote = (data.get("quotes") or [{}])[0]
             row = {field: quote.get(field, "") for field in chosen_fields}
-            print(json.dumps(row, default=str, separators=(",", ":")))
+            print_output(
+                row,
+                json_output=state.json_output,
+                command=command,
+                request_id=result.request_id,
+                strict=state.strict,
+            )
             time.sleep(interval_seconds)
     except KeyboardInterrupt:
         return
     except BrokerError as exc:
-        handle_error(exc, json_output=state.json_output)
+        handle_error(exc, json_output=state.json_output, command=command, strict=state.strict)
 
 
 @app.command("chain", help="Fetch an option chain with optional expiry/strike filters.")
@@ -130,23 +160,60 @@ def chain(
     ctx: typer.Context,
     symbol: str,
     expiry: str | None = typer.Option(None, "--expiry", help="YYYY-MM"),
-    strike_range: str | None = typer.Option(None, "--strike-range", help="0.8:1.2"),
+    strike_range: str | None = typer.Option(
+        DEFAULT_CHAIN_STRIKE_RANGE,
+        "--strike-range",
+        help="Relative strike window like 0.9:1.1 (defaults to near-the-money only).",
+    ),
     option_type: OptionType | None = typer.Option(None, "--type", case_sensitive=False, help="call|put"),
+    limit: int = typer.Option(
+        DEFAULT_CHAIN_LIMIT,
+        "--limit",
+        min=1,
+        help="Maximum entries to return after filters.",
+    ),
+    offset: int = typer.Option(0, "--offset", min=0, help="Offset into filtered chain entries."),
+    fields: str | None = typer.Option(
+        None,
+        "--fields",
+        help="Comma-separated entry fields to include. Defaults to all.",
+    ),
+    strict: bool | None = typer.Option(
+        None,
+        "--strict/--no-strict",
+        help="Treat empty chain results as errors.",
+    ),
 ) -> None:
     state = get_state(ctx)
-    params: dict[str, object] = {"symbol": symbol}
+    command = "market.chain"
+    strict_mode = state.strict if strict is None else strict
+    params: dict[str, object] = {
+        "symbol": symbol,
+        "limit": limit,
+        "offset": offset,
+        "strict": strict_mode,
+    }
     if expiry:
         params["expiry"] = expiry
     if strike_range:
         params["strike_range"] = strike_range
     if option_type:
         params["type"] = option_type.value
+    if fields:
+        chosen = [item.lower() for item in parse_csv_items(fields, field_name="fields")]
+        params["fields"] = validate_allowed_values(chosen, allowed=CHAIN_FIELDS, field_name="fields")
 
     try:
-        data = run_async(daemon_request(state, "market.chain", params))
-        print_output(data, json_output=state.json_output)
+        result = run_async(daemon_request(state, command, params))
+        print_output(
+            result.data,
+            json_output=state.json_output,
+            command=command,
+            request_id=result.request_id,
+            strict=strict_mode,
+        )
     except BrokerError as exc:
-        handle_error(exc, json_output=state.json_output)
+        handle_error(exc, json_output=state.json_output, command=command, strict=strict_mode)
 
 
 @app.command("history", help="Fetch historical bars for a symbol.")
@@ -156,24 +223,38 @@ def history(
     period: HistoryPeriod = typer.Option(..., "--period", case_sensitive=False, help="1d, 5d, 30d, 90d, 1y"),
     bar: BarSize = typer.Option(..., "--bar", case_sensitive=False, help="1m, 5m, 15m, 1h, 1d"),
     rth_only: bool = typer.Option(False, "--rth-only", help="Restrict to regular trading hours."),
+    strict: bool | None = typer.Option(
+        None,
+        "--strict/--no-strict",
+        help="Treat empty history responses as errors.",
+    ),
 ) -> None:
     state = get_state(ctx)
+    command = "market.history"
+    strict_mode = state.strict if strict is None else strict
     try:
-        data = run_async(
+        result = run_async(
             daemon_request(
                 state,
-                "market.history",
+                command,
                 {
                     "symbol": symbol,
                     "period": period.value,
                     "bar": bar.value,
                     "rth_only": rth_only,
+                    "strict": strict_mode,
                 },
             )
         )
-        print_output(data.get("bars", []), json_output=state.json_output, title="History")
+        print_output(
+            result.data.get("bars", []),
+            json_output=state.json_output,
+            command=command,
+            request_id=result.request_id,
+            strict=strict_mode,
+        )
     except BrokerError as exc:
-        handle_error(exc, json_output=state.json_output)
+        handle_error(exc, json_output=state.json_output, command=command, strict=strict_mode)
 
 
 @app.command("capabilities", help="Show detected market-data capabilities for the connected provider.")
@@ -191,14 +272,21 @@ def capabilities(
     ),
 ) -> None:
     state = get_state(ctx)
+    command = "market.capabilities"
     params: dict[str, object] = {"refresh": refresh}
     if symbols:
         params["symbols"] = symbols
     try:
-        data = run_async(daemon_request(state, "market.capabilities", params))
-        print_output(data.get("capabilities", data), json_output=state.json_output, title="Market Capabilities")
+        result = run_async(daemon_request(state, command, params))
+        print_output(
+            result.data,
+            json_output=state.json_output,
+            command=command,
+            request_id=result.request_id,
+            strict=state.strict,
+        )
     except BrokerError as exc:
-        handle_error(exc, json_output=state.json_output)
+        handle_error(exc, json_output=state.json_output, command=command, strict=state.strict)
 
 
 def _parse_interval(raw: str) -> float:

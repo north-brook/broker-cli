@@ -76,6 +76,37 @@ class MarketDataService:
         *,
         refresh: bool = False,
     ) -> ProviderQuoteCapabilities:
+        capabilities, _ = await self._resolve_quote_capabilities(symbols, refresh=refresh)
+        return capabilities
+
+    async def quote_capabilities_with_meta(
+        self,
+        symbols: list[str] | None = None,
+        *,
+        refresh: bool = False,
+    ) -> tuple[ProviderQuoteCapabilities, dict[str, object]]:
+        capabilities, cache_hit = await self._resolve_quote_capabilities(symbols, refresh=refresh)
+        now = datetime.now(UTC)
+        cache_age_ms: int | None = None
+        refreshed_at: str | None = None
+        if self._capabilities_cached_at is not None:
+            cache_age_ms = max(0, int((now - self._capabilities_cached_at).total_seconds() * 1000))
+            refreshed_at = self._capabilities_cached_at.isoformat()
+        meta = {
+            "refresh_requested": refresh,
+            "cache_hit": cache_hit,
+            "cache_age_ms": cache_age_ms,
+            "cache_ttl_ms": int(self._capabilities_ttl.total_seconds() * 1000),
+            "refreshed_at": refreshed_at,
+        }
+        return capabilities, meta
+
+    async def _resolve_quote_capabilities(
+        self,
+        symbols: list[str] | None = None,
+        *,
+        refresh: bool = False,
+    ) -> tuple[ProviderQuoteCapabilities, bool]:
         requested = [s.upper().strip() for s in (symbols or self._settings.probe_symbols) if s.strip()]
         now = datetime.now(UTC)
         cache_is_valid = (
@@ -88,13 +119,14 @@ class MarketDataService:
         if not cache_is_valid:
             self._capabilities_cache = await self._provider.quote_capabilities(requested, refresh=refresh)
             self._capabilities_cached_at = now
-            return self._capabilities_cache
+            return self._capabilities_cache, False
 
         if self._capabilities_cache is None:
             self._capabilities_cache = await self._provider.quote_capabilities(requested, refresh=refresh)
             self._capabilities_cached_at = now
-            return self._capabilities_cache
+            return self._capabilities_cache, False
 
+        cache_hit = True
         missing = [symbol for symbol in requested if symbol not in self._capabilities_cache.symbols]
         if missing:
             refreshed = await self._provider.quote_capabilities(missing, refresh=True)
@@ -107,7 +139,8 @@ class MarketDataService:
                 updated_at=refreshed.updated_at,
             )
             self._capabilities_cached_at = now
-        return self._capabilities_cache
+            cache_hit = False
+        return self._capabilities_cache, cache_hit
 
     async def _apply_last_price_history_fallback(self, quotes: list[Quote]) -> list[Quote]:
         if not self._provider.capabilities.get("history"):

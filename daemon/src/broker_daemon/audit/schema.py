@@ -10,7 +10,8 @@ SCHEMA_STATEMENTS = [
         source TEXT NOT NULL,
         command TEXT NOT NULL,
         arguments TEXT,
-        result_code INTEGER NOT NULL
+        result_code INTEGER NOT NULL,
+        request_id TEXT
     )
     """,
     """
