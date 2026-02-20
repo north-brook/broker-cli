@@ -285,6 +285,323 @@ elif isinstance(value, (str, int, float)):
 PY
 }
 
+read_observability_config_value() {
+  local key="$1"
+  if [[ ! -f "${BROKER_CONFIG_JSON}" ]]; then
+    return 0
+  fi
+  if ! command -v python3 >/dev/null 2>&1; then
+    return 0
+  fi
+
+  python3 - "${BROKER_CONFIG_JSON}" "${key}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+key = sys.argv[2]
+try:
+    data = json.loads(path.read_text(encoding="utf-8"))
+except Exception:
+    sys.exit(0)
+
+if not isinstance(data, dict):
+    sys.exit(0)
+
+broker_cfg = data.get("broker")
+if not isinstance(broker_cfg, dict):
+    sys.exit(0)
+
+observability = broker_cfg.get("observability")
+if not isinstance(observability, dict):
+    sys.exit(0)
+
+value = observability.get(key)
+if value is None:
+    sys.exit(0)
+
+if isinstance(value, bool):
+    print("true" if value else "false")
+elif isinstance(value, (str, int, float)):
+    print(value)
+PY
+}
+
+save_observability_fund_dir() {
+  local fund_dir="$1"
+  if ! command -v python3 >/dev/null 2>&1; then
+    fail "python3 is required to update ${BROKER_CONFIG_JSON}."
+  fi
+
+  BROKER_OBSERVABILITY_FUND_DIR="${fund_dir}" python3 - "${BROKER_CONFIG_JSON}" <<'PY'
+import json
+import os
+import sys
+from pathlib import Path
+
+config_path = Path(sys.argv[1]).expanduser()
+config_path.parent.mkdir(parents=True, exist_ok=True)
+fund_dir = os.environ.get("BROKER_OBSERVABILITY_FUND_DIR", "").strip()
+
+loaded: dict[str, object] = {}
+if config_path.exists():
+    try:
+        existing = json.loads(config_path.read_text(encoding="utf-8"))
+        if isinstance(existing, dict):
+            loaded = existing
+    except Exception:
+        loaded = {}
+
+broker_cfg = loaded.get("broker")
+if not isinstance(broker_cfg, dict):
+    broker_cfg = {}
+
+observability_cfg = broker_cfg.get("observability")
+if not isinstance(observability_cfg, dict):
+    observability_cfg = {}
+
+observability_cfg["fund_dir"] = fund_dir
+observability_cfg["auto_sync"] = True
+observability_cfg["auto_push"] = True
+broker_cfg["observability"] = observability_cfg
+loaded["broker"] = broker_cfg
+
+config_path.write_text(json.dumps(loaded, indent=2) + "\n", encoding="utf-8")
+os.chmod(config_path, 0o600)
+PY
+}
+
+expand_path_value() {
+  local raw_path="$1"
+  if ! command -v python3 >/dev/null 2>&1; then
+    printf '%s\n' "${raw_path}"
+    return 0
+  fi
+  BROKER_EXPAND_PATH="${raw_path}" python3 - <<'PY'
+import os
+from pathlib import Path
+
+raw = os.environ.get("BROKER_EXPAND_PATH", "").strip()
+print(str(Path(raw).expanduser()))
+PY
+}
+
+fetch_initial_capital_from_provider() {
+  local setup_python=""
+  if [[ -x "${ROOT_DIR}/.venv/bin/python" ]]; then
+    setup_python="${ROOT_DIR}/.venv/bin/python"
+  elif command -v python3 >/dev/null 2>&1; then
+    setup_python="$(command -v python3)"
+  elif command -v python >/dev/null 2>&1; then
+    setup_python="$(command -v python)"
+  fi
+
+  if [[ -z "${setup_python}" ]]; then
+    return 1
+  fi
+
+  local setup_pythonpath="${ROOT_DIR}/daemon/src:${ROOT_DIR}/sdk/python/src:${ROOT_DIR}/cli/src"
+  if [[ -n "${PYTHONPATH:-}" ]]; then
+    setup_pythonpath="${setup_pythonpath}:${PYTHONPATH}"
+  fi
+
+  PYTHONPATH="${setup_pythonpath}" "${setup_python}" - <<'PY'
+import asyncio
+import sys
+
+from broker_daemon.config import load_config
+from broker_daemon.providers.ib import IBProvider
+
+
+async def main() -> None:
+    cfg = load_config()
+    if cfg.provider == "etrade":
+        from broker_daemon.providers.etrade import ETradeProvider
+
+        provider = ETradeProvider(cfg.etrade)
+    else:
+        provider = IBProvider(cfg.gateway)
+
+    try:
+        await provider.start()
+        balance = await provider.balance()
+        initial_capital = balance.net_liquidation if balance.net_liquidation is not None else balance.cash
+        if initial_capital is None:
+            raise RuntimeError("provider returned no net_liquidation or cash value")
+        print(float(initial_capital))
+    finally:
+        try:
+            await provider.stop()
+        except Exception:
+            pass
+
+
+try:
+    asyncio.run(main())
+except Exception as exc:
+    print(str(exc), file=sys.stderr)
+    sys.exit(1)
+PY
+}
+
+initialize_fund_repo_files() {
+  local fund_dir="$1"
+  local fund_name="$2"
+  local fund_slug="$3"
+  local inception_timestamp="$4"
+  local initial_capital="$5"
+
+  BROKER_FUND_DIR="${fund_dir}" \
+  BROKER_FUND_NAME="${fund_name}" \
+  BROKER_FUND_SLUG="${fund_slug}" \
+  BROKER_FUND_INCEPTION="${inception_timestamp}" \
+  BROKER_FUND_INITIAL_CAPITAL="${initial_capital}" \
+  python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+
+fund_dir = Path(os.environ["BROKER_FUND_DIR"]).expanduser()
+fund_name = os.environ["BROKER_FUND_NAME"]
+fund_slug = os.environ["BROKER_FUND_SLUG"]
+inception = os.environ["BROKER_FUND_INCEPTION"]
+initial_capital = float(os.environ["BROKER_FUND_INITIAL_CAPITAL"])
+
+fund_dir.mkdir(parents=True, exist_ok=True)
+(fund_dir / "decisions").mkdir(parents=True, exist_ok=True)
+
+config = {
+    "name": fund_name,
+    "slug": fund_slug,
+    "inception": inception,
+    "currency": "USD",
+    "initialCapital": initial_capital,
+    "benchmarks": [],
+    "cashInterestPolicy": {
+        "enabled": True,
+        "source": "inferred_from_broker_cash_balance"
+    },
+}
+
+(fund_dir / "config.json").write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+(fund_dir / "fills.json").write_text("[]\n", encoding="utf-8")
+(fund_dir / "cash_events.json").write_text("[]\n", encoding="utf-8")
+PY
+}
+
+initialize_fund_repo_git() {
+  local fund_dir="$1"
+  local origin_url="$2"
+
+  if ! command -v git >/dev/null 2>&1; then
+    warn "Git not found. Skipping git repository initialization for fund directory."
+    return 0
+  fi
+
+  if ! git -C "${fund_dir}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    if ! git -C "${fund_dir}" init -b main >/dev/null 2>&1; then
+      git -C "${fund_dir}" init >/dev/null 2>&1 || fail "Failed to initialize git repository at ${fund_dir}."
+    fi
+  fi
+
+  git -C "${fund_dir}" add config.json fills.json cash_events.json decisions >/dev/null 2>&1 || true
+  git -C "${fund_dir}" commit -m "Initialize fund repository" >/dev/null 2>&1 || true
+
+  if [[ -n "${origin_url}" ]]; then
+    if git -C "${fund_dir}" remote get-url origin >/dev/null 2>&1; then
+      git -C "${fund_dir}" remote set-url origin "${origin_url}" >/dev/null 2>&1 || true
+    else
+      git -C "${fund_dir}" remote add origin "${origin_url}" >/dev/null 2>&1 || true
+    fi
+    if ! git -C "${fund_dir}" push -u origin HEAD >/dev/null 2>&1; then
+      warn "Initial push to origin failed. Setup will continue; auto-sync pushes may fail until auth/remote is fixed."
+    fi
+  fi
+}
+
+configure_fund_repository() {
+  if ! has_prompt_tty; then
+    warn "No interactive terminal input available. Skipping fund repository setup."
+    return 0
+  fi
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    fail "python3 is required for fund repository setup."
+  fi
+
+  tty_printf "%b%s%b\n" "${BOLD}" "Fund Observability Repository" "${RESET}"
+
+  local current_fund_dir=""
+  current_fund_dir="$(trim_input "$(read_observability_config_value "fund_dir" || true)")"
+
+  local fund_dir_input=""
+  read_line_input "Fund directory path" "${current_fund_dir}" fund_dir_input
+  fund_dir_input="$(trim_input "${fund_dir_input}")"
+  while [[ -z "${fund_dir_input}" ]]; do
+    tty_printf "%b%s%b\n" "${YELLOW}" "Fund directory path is required." "${RESET}"
+    read_line_input "Fund directory path" "${current_fund_dir}" fund_dir_input
+    fund_dir_input="$(trim_input "${fund_dir_input}")"
+  done
+
+  local fund_dir=""
+  fund_dir="$(expand_path_value "${fund_dir_input}")"
+  save_observability_fund_dir "${fund_dir}"
+
+  if [[ -e "${fund_dir}" && ! -d "${fund_dir}" ]]; then
+    fail "Fund path exists but is not a directory: ${fund_dir}"
+  fi
+
+  if [[ -d "${fund_dir}" ]]; then
+    tty_printf "%b✔%b %s\n" "${GREEN}" "${RESET}" "Using existing fund directory ${fund_dir}; skipping initialization."
+    return 0
+  fi
+
+  local fund_name=""
+  read_line_input "Fund name" "" fund_name
+  fund_name="$(trim_input "${fund_name}")"
+  while [[ -z "${fund_name}" ]]; do
+    tty_printf "%b%s%b\n" "${YELLOW}" "Fund name is required." "${RESET}"
+    read_line_input "Fund name" "" fund_name
+    fund_name="$(trim_input "${fund_name}")"
+  done
+
+  local fund_slug=""
+  read_line_input "Fund slug" "" fund_slug
+  fund_slug="$(trim_input "${fund_slug}")"
+  while [[ -z "${fund_slug}" ]]; do
+    tty_printf "%b%s%b\n" "${YELLOW}" "Fund slug is required." "${RESET}"
+    read_line_input "Fund slug" "" fund_slug
+    fund_slug="$(trim_input "${fund_slug}")"
+  done
+
+  local origin_git=""
+  read_line_input "Git origin URL" "" origin_git
+  origin_git="$(trim_input "${origin_git}")"
+  while [[ -z "${origin_git}" ]]; do
+    tty_printf "%b%s%b\n" "${YELLOW}" "Git origin URL is required." "${RESET}"
+    read_line_input "Git origin URL" "" origin_git
+    origin_git="$(trim_input "${origin_git}")"
+  done
+
+  local initial_capital=""
+  if ! initial_capital="$(fetch_initial_capital_from_provider 2>/dev/null)"; then
+    fail "Could not fetch initial capital from provider. Ensure broker credentials/connectivity are valid, then rerun broker setup."
+  fi
+  initial_capital="$(trim_input "${initial_capital}")"
+  if [[ -z "${initial_capital}" ]]; then
+    fail "Provider returned an empty initial capital value."
+  fi
+
+  local inception_timestamp=""
+  inception_timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+  initialize_fund_repo_files "${fund_dir}" "${fund_name}" "${fund_slug}" "${inception_timestamp}" "${initial_capital}"
+  initialize_fund_repo_git "${fund_dir}" "${origin_git}"
+
+  tty_printf "%b✔%b %s\n" "${GREEN}" "${RESET}" "Initialized fund repository at ${fund_dir}"
+}
+
 save_selected_provider() {
   local provider="$1"
 

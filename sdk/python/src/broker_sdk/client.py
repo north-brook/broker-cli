@@ -217,6 +217,9 @@ class Client:
         client_order_id: str | None = None,
         idempotency_key: str | None = None,
         dry_run: bool = False,
+        decision_name: str | None = None,
+        decision_summary: str | None = None,
+        decision_reasoning: str | None = None,
     ) -> dict[str, Any]:
         params: dict[str, Any] = {
             "side": side,
@@ -234,6 +237,12 @@ class Client:
             params["idempotency_key"] = idempotency_key
         if dry_run:
             params["dry_run"] = True
+        if decision_name:
+            params["decision_name"] = decision_name
+        if decision_summary:
+            params["decision_summary"] = decision_summary
+        if decision_reasoning:
+            params["decision_reasoning"] = decision_reasoning
         return await self._request("order.place", params)
 
     async def bracket(
@@ -246,19 +255,26 @@ class Client:
         tp: float,
         sl: float,
         tif: TimeInForce = "DAY",
+        decision_name: str | None = None,
+        decision_summary: str | None = None,
+        decision_reasoning: str | None = None,
     ) -> dict[str, Any]:
-        return await self._request(
-            "order.bracket",
-            {
-                "side": side,
-                "symbol": symbol,
-                "qty": qty,
-                "entry": entry,
-                "tp": tp,
-                "sl": sl,
-                "tif": tif,
-            },
-        )
+        params: dict[str, Any] = {
+            "side": side,
+            "symbol": symbol,
+            "qty": qty,
+            "entry": entry,
+            "tp": tp,
+            "sl": sl,
+            "tif": tif,
+        }
+        if decision_name:
+            params["decision_name"] = decision_name
+        if decision_summary:
+            params["decision_summary"] = decision_summary
+        if decision_reasoning:
+            params["decision_reasoning"] = decision_reasoning
+        return await self._request("order.bracket", params)
 
     async def order_status(self, order_id: str) -> dict[str, Any]:
         return await self._request("order.status", {"order_id": order_id})

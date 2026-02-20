@@ -264,11 +264,20 @@ export class Client {
     if (input.dry_run !== undefined) {
       params.dry_run = input.dry_run;
     }
+    if (input.decision_name) {
+      params.decision_name = input.decision_name;
+    }
+    if (input.decision_summary) {
+      params.decision_summary = input.decision_summary;
+    }
+    if (input.decision_reasoning) {
+      params.decision_reasoning = input.decision_reasoning;
+    }
     return this.request("order.place", params);
   }
 
   async bracket(input: BracketInput): Promise<OrderBracketResponse> {
-    return this.request("order.bracket", {
+    const params: CommandParams<"order.bracket"> = {
       side: input.side,
       symbol: input.symbol,
       qty: input.qty,
@@ -276,7 +285,17 @@ export class Client {
       tp: input.tp,
       sl: input.sl,
       tif: input.tif ?? "DAY"
-    });
+    };
+    if (input.decision_name) {
+      params.decision_name = input.decision_name;
+    }
+    if (input.decision_summary) {
+      params.decision_summary = input.decision_summary;
+    }
+    if (input.decision_reasoning) {
+      params.decision_reasoning = input.decision_reasoning;
+    }
+    return this.request("order.bracket", params);
   }
 
   async orderStatus(orderId: string): Promise<OrderStatusResponse> {

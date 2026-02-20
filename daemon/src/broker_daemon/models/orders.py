@@ -72,6 +72,7 @@ class OrderRecord(BaseModel):
     fill_qty: float = 0
     commission: float | None = None
     risk_check_result: dict[str, Any] = Field(default_factory=dict)
+    tags: dict[str, Any] = Field(default_factory=dict)
 
 
 class FillRecord(BaseModel):
@@ -79,7 +80,9 @@ class FillRecord(BaseModel):
     client_order_id: str
     ib_order_id: int | None
     symbol: str
+    side: Side | None = None
     qty: float
     price: float
     commission: float | None = None
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    decision_id: str | None = None

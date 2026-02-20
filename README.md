@@ -33,7 +33,10 @@ broker daemon status           # Check connection
 broker quote AAPL MSFT         # Get quotes
 broker positions               # View portfolio
 broker exposure --by symbol    # Exposure analysis
-broker order buy AAPL 100 --limit 185   # Place an order
+broker order buy AAPL 100 --limit 185 \
+  --decision-name "Initiate AAPL Position" \
+  --decision-summary "Open core position" \
+  --decision-reasoning "## Thesis\nHigh-conviction setup."   # Place an order
 ```
 
 ## Built for Agents
@@ -73,9 +76,9 @@ broker quote SYMBOL...           Snapshot quotes
 broker watch SYMBOL              Live quote stream
 broker chain SYMBOL              Option chain with greeks
 broker history SYMBOL            Historical bars
-broker order buy SYMBOL QTY      Buy order (market/limit/stop)
-broker order sell SYMBOL QTY     Sell order
-broker order bracket SYMBOL QTY  Bracket order (entry + TP + SL)
+broker order buy SYMBOL QTY      Buy order (requires --decision-name/--decision-summary/--decision-reasoning)
+broker order sell SYMBOL QTY     Sell order (requires --decision-name/--decision-summary/--decision-reasoning)
+broker order bracket SYMBOL QTY  Bracket order (entry + TP + SL, requires decision flags)
 broker order status ORDER_ID     Order status
 broker orders                    List orders
 broker cancel ORDER_ID           Cancel an order

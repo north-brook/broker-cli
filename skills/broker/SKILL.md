@@ -12,11 +12,13 @@ Use this guide as an expanded Markdown help menu for `broker`.
 - Run help on any command with `-h` or `--help`.
 - Expect JSON output from commands.
 - Use command typo suggestions from the CLI if you mistype a command name.
+- `broker setup` now configures provider credentials and fund observability repo wiring.
 
 ## Top-Level Command Map
 
 ```text
 broker daemon  ...    # daemon lifecycle
+broker setup   ...    # provider + fund observability setup
 broker quote   ...    # quote snapshot
 broker watch   ...    # streaming quote refresh
 broker chain   ...    # option chain
@@ -37,6 +39,18 @@ broker resume    ...   # resume after halt
 broker override  ...   # temporary risk override
 broker audit ...      # grouped audit commands
 ```
+
+## Setup Command
+
+### `broker setup`
+
+Interactive setup for broker provider + fund observability repo bootstrap.
+
+- Prompts for fund directory.
+- If the directory already exists, setup reuses it and skips fund bootstrap prompts.
+- For new directories, setup prompts for fund name, fund slug, and git origin URL.
+- Initial capital is fetched from the configured broker provider.
+- Setup initializes `config.json`, `fills.json`, `cash_events.json`, `decisions/`, and a git repo with `origin`.
 
 ## Daemon Commands
 
@@ -128,34 +142,46 @@ broker history SYMBOL --period PERIOD --bar BAR [--rth-only]
 Place buy order. Market by default unless `--limit` and/or `--stop` is set.
 
 ```bash
-broker order buy SYMBOL QTY [--limit PRICE] [--stop PRICE] [--tif DAY|GTC|IOC]
+broker order buy SYMBOL QTY [--limit PRICE] [--stop PRICE] [--tif DAY|GTC|IOC] \
+  --decision-name "Title Case Decision" \
+  --decision-summary "One-line plain text summary" \
+  --decision-reasoning "## Markdown reasoning..."
 ```
 
 - `QTY` must be `> 0`.
 - Default `--tif`: `DAY`
+- Decision flags are required for submitted orders.
 
 ### `broker order sell`
 
 Place sell order. Market by default unless `--limit` and/or `--stop` is set.
 
 ```bash
-broker order sell SYMBOL QTY [--limit PRICE] [--stop PRICE] [--tif DAY|GTC|IOC]
+broker order sell SYMBOL QTY [--limit PRICE] [--stop PRICE] [--tif DAY|GTC|IOC] \
+  --decision-name "Title Case Decision" \
+  --decision-summary "One-line plain text summary" \
+  --decision-reasoning "## Markdown reasoning..."
 ```
 
 - `QTY` must be `> 0`.
 - Default `--tif`: `DAY`
+- Decision flags are required for submitted orders.
 
 ### `broker order bracket`
 
 Place bracket order (entry + take-profit + stop-loss).
 
 ```bash
-broker order bracket SYMBOL QTY --entry PRICE --tp PRICE --sl PRICE [--side buy|sell] [--tif DAY|GTC|IOC]
+broker order bracket SYMBOL QTY --entry PRICE --tp PRICE --sl PRICE [--side buy|sell] [--tif DAY|GTC|IOC] \
+  --decision-name "Title Case Decision" \
+  --decision-summary "One-line plain text summary" \
+  --decision-reasoning "## Markdown reasoning..."
 ```
 
 - Required: `--entry`, `--tp`, `--sl`
 - Default `--side`: `buy`
 - Default `--tif`: `DAY`
+- Decision flags are required.
 
 ### `broker order status`
 
