@@ -694,6 +694,7 @@ class ETradeProvider(BrokerProvider):
                     client_order_id=str(parsed["client_order_id"] or ""),
                     ib_order_id=_as_int(parsed["order_id"]),
                     symbol=str(parsed["symbol"] or ""),
+                    side=_normalize_side(parsed["action"]),
                     qty=qty,
                     price=float(parsed["avg_fill_price"] or 0.0),
                     timestamp=datetime.now(UTC),
@@ -1437,6 +1438,17 @@ def _order_action(side: str) -> str:
         "sell": "SELL",
     }
     return mapping.get(side.lower(), side.upper())
+
+
+def _normalize_side(action: Any) -> str | None:
+    if action is None:
+        return None
+    normalized = str(action).strip().lower()
+    if normalized in {"buy", "buy_open", "buy_to_open", "buy_to_cover"}:
+        return "buy"
+    if normalized in {"sell", "sell_short", "sell_to_open", "sell_to_close"}:
+        return "sell"
+    return None
 
 
 def _order_term(tif: str) -> str:

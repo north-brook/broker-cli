@@ -183,10 +183,12 @@ export interface FillRecord {
   client_order_id: string;
   ib_order_id: number | null;
   symbol: string;
+  side?: OrderSide | null;
   qty: number;
   price: number;
   commission?: number | null;
   timestamp: string;
+  decision_id?: string | null;
 }
 
 export interface RiskCheckResult {
@@ -419,6 +421,9 @@ export interface OrderInput {
   client_order_id?: string;
   idempotency_key?: string;
   dry_run?: boolean;
+  decision_name?: string;
+  decision_summary?: string;
+  decision_reasoning?: string;
 }
 
 export interface BracketInput {
@@ -429,6 +434,9 @@ export interface BracketInput {
   tp: number;
   sl: number;
   tif?: TimeInForce;
+  decision_name?: string;
+  decision_summary?: string;
+  decision_reasoning?: string;
 }
 
 export interface RiskCheckInput {

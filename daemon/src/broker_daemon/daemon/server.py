@@ -25,6 +25,7 @@ from broker_daemon.exceptions import ErrorCode, BrokerError
 from broker_daemon.models.events import Event, EventTopic
 from broker_daemon.models.market import QUOTE_INTENTS, OptionChainEntry
 from broker_daemon.models.orders import FillRecord, OrderRequest
+from broker_daemon.observability import FundSyncService
 from broker_daemon.protocol import ErrorResponse, EventEnvelope, Request, Response, decode_request, encode_model, frame_payload, read_framed
 from broker_daemon.providers import IBProvider
 from broker_daemon.risk.engine import RiskEngine
@@ -94,17 +95,20 @@ class DaemonServer:
         else:
             self._provider = IBProvider(cfg.gateway, audit=self._audit, event_cb=self._on_broker_event)
 
+        self._fund_sync = FundSyncService(cfg.observability, provider=self._provider)
         self._market_data = MarketDataService(self._provider, settings=cfg.market_data)
         self._orders = OrderManager(
             provider=self._provider,
             risk=self._risk,
             audit=self._audit,
             event_cb=self._broadcast_event,
+            fund_sync=self._fund_sync,
         )
 
         self._server: asyncio.AbstractServer | None = None
         self._subscribers: list[Subscriber] = []
         self._monitor_task: asyncio.Task[None] | None = None
+        self._fills_reconcile_task: asyncio.Task[None] | None = None
 
     @property
     def socket_path(self) -> Path:
@@ -125,6 +129,8 @@ class DaemonServer:
         self._cfg.runtime.pid_file.write_text(str(os.getpid()), encoding="utf-8")
 
         self._monitor_task = asyncio.create_task(self._monitor_loop())
+        if self._cfg.provider == "etrade" and self._fund_sync.enabled:
+            self._fills_reconcile_task = asyncio.create_task(self._fills_reconcile_loop())
         await self._audit.log_connection_event("daemon_started", {"socket": str(self.socket_path)})
 
     async def serve(self) -> None:
@@ -143,6 +149,9 @@ class DaemonServer:
         if self._monitor_task:
             self._monitor_task.cancel()
             self._monitor_task = None
+        if self._fills_reconcile_task:
+            self._fills_reconcile_task.cancel()
+            self._fills_reconcile_task = None
 
         for sub in list(self._subscribers):
             sub.writer.close()
@@ -477,6 +486,10 @@ class DaemonServer:
             idempotency_key = raw.pop("idempotency_key", None)
             if idempotency_key and not raw.get("client_order_id"):
                 raw["client_order_id"] = str(idempotency_key)
+            if not dry_run:
+                decision_tags = _extract_decision_tags(raw, required=True)
+                existing_tags = raw.get("tags") if isinstance(raw.get("tags"), dict) else {}
+                raw["tags"] = {**existing_tags, **decision_tags}
 
             req = OrderRequest.model_validate(raw)
 
@@ -515,6 +528,7 @@ class DaemonServer:
 
         if cmd == "order.bracket":
             self._require_capability("bracket_orders", "bracket orders")
+            decision_tags = _extract_decision_tags(p, required=True)
             res = await self._orders.place_bracket(
                 side=str(p.get("side", "buy")),
                 symbol=str(p["symbol"]),
@@ -523,6 +537,7 @@ class DaemonServer:
                 tp=float(p["tp"]),
                 sl=float(p["sl"]),
                 tif=str(p.get("tif", "DAY")),
+                decision=decision_tags,
             )
             return res
 
@@ -714,8 +729,12 @@ class DaemonServer:
                     client_order_id=str(event.payload.get("client_order_id") or ""),
                     ib_order_id=_maybe_int(event.payload.get("ib_order_id")),
                     symbol=str(symbol),
+                    side=_maybe_side(event.payload.get("side")),
                     qty=float(event.payload.get("qty") or 0.0),
                     price=float(event.payload.get("price") or 0.0),
+                    commission=_maybe_float(event.payload.get("commission")),
+                    timestamp=_maybe_datetime(event.payload.get("timestamp")) or datetime.now(UTC),
+                    decision_id=_maybe_string(event.payload.get("decision_id")),
                 )
                 await self._orders.add_fill(fill)
 
@@ -780,6 +799,17 @@ class DaemonServer:
                         )
                 except Exception:
                     logger.debug("drawdown monitor skipped due to transient error", exc_info=True)
+
+    async def _fills_reconcile_loop(self) -> None:
+        interval = self._cfg.observability.etrade_fill_poll_seconds
+        while not self._shutdown.is_set():
+            await asyncio.sleep(interval)
+            try:
+                fills = await self._provider.fills()
+                for fill in fills:
+                    await self._orders.add_fill(fill)
+            except Exception:
+                logger.exception("fills reconcile loop failed")
 
 
 def _parse_strike_range(raw: Any) -> tuple[float, float] | None:
@@ -1109,6 +1139,9 @@ def _command_schema_registry() -> dict[str, dict[str, Any]]:
                 "client_order_id": {"type": "string"},
                 "idempotency_key": {"type": "string"},
                 "dry_run": {"type": "boolean"},
+                "decision_name": {"type": "string"},
+                "decision_summary": {"type": "string"},
+                "decision_reasoning": {"type": "string"},
             },
             "required": ["side", "symbol", "qty"],
         },
@@ -1123,6 +1156,27 @@ def _command_schema_registry() -> dict[str, dict[str, Any]]:
             },
             "required": ["order", "dry_run", "risk_check", "submit_allowed"],
         },
+    }
+
+    base["order.bracket"] = {
+        "params": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "side": {"enum": ["buy", "sell"]},
+                "symbol": {"type": "string"},
+                "qty": {"type": "number", "exclusiveMinimum": 0},
+                "entry": {"type": "number"},
+                "tp": {"type": "number"},
+                "sl": {"type": "number"},
+                "tif": {"enum": ["DAY", "GTC", "IOC"]},
+                "decision_name": {"type": "string"},
+                "decision_summary": {"type": "string"},
+                "decision_reasoning": {"type": "string"},
+            },
+            "required": ["symbol", "qty", "entry", "tp", "sl", "decision_name", "decision_summary", "decision_reasoning"],
+        },
+        "result": {"type": "object", "additionalProperties": True},
     }
 
     base["risk.check"] = {
@@ -1215,6 +1269,102 @@ def _maybe_int(value: Any) -> int | None:
         return int(value)
     except Exception:
         return None
+
+
+def _maybe_datetime(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return value
+    if not isinstance(value, str):
+        return None
+    raw = value.strip()
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def _maybe_side(value: Any) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip().lower()
+    if normalized in {"buy", "bot", "b"}:
+        return "buy"
+    if normalized in {"sell", "sld", "s"}:
+        return "sell"
+    return None
+
+
+def _maybe_string(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    out = value.strip()
+    return out or None
+
+
+def _extract_decision_tags(params: dict[str, Any], *, required: bool) -> dict[str, str]:
+    name = _maybe_string(params.get("decision_name"))
+    summary = _maybe_string(params.get("decision_summary"))
+    reasoning = _maybe_string(params.get("decision_reasoning"))
+
+    if required:
+        if not name:
+            raise BrokerError(
+                ErrorCode.INVALID_ARGS,
+                "decision_name is required when placing an order",
+                suggestion="Provide --decision-name with title-case plain text.",
+            )
+        if not summary:
+            raise BrokerError(
+                ErrorCode.INVALID_ARGS,
+                "decision_summary is required when placing an order",
+                suggestion="Provide --decision-summary with a one-line plain-text summary.",
+            )
+        if not reasoning:
+            raise BrokerError(
+                ErrorCode.INVALID_ARGS,
+                "decision_reasoning is required when placing an order",
+                suggestion="Provide --decision-reasoning with markdown rationale.",
+            )
+    if not name or not summary or not reasoning:
+        return {}
+
+    if "\n" in name or "\r" in name:
+        raise BrokerError(
+            ErrorCode.INVALID_ARGS,
+            "decision_name must be plain text on a single line",
+            suggestion="Use title-case text, e.g. 'Initiate NVDA Position'.",
+        )
+    if "\n" in summary or "\r" in summary:
+        raise BrokerError(
+            ErrorCode.INVALID_ARGS,
+            "decision_summary must be plain text on a single line",
+        )
+    if not _is_title_case(name):
+        raise BrokerError(
+            ErrorCode.INVALID_ARGS,
+            "decision_name must be title case plain text",
+            suggestion="Example: 'Add To Core Position'.",
+        )
+
+    return {
+        "decision_id": _decision_timestamp_id(),
+        "decision_name": name,
+        "decision_summary": summary,
+        "decision_reasoning": reasoning,
+    }
+
+
+def _is_title_case(value: str) -> bool:
+    words = [part for part in value.split(" ") if part]
+    if not words:
+        return False
+    return all(word[0].isupper() for word in words if word and word[0].isalpha())
+
+
+def _decision_timestamp_id() -> str:
+    return datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
 
 
 async def _safe_wait_closed(writer: asyncio.StreamWriter) -> None:

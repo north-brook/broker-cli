@@ -8,7 +8,8 @@ from typing import Any, Awaitable, Callable
 
 from broker_daemon.audit.logger import AuditLogger
 from broker_daemon.models.events import Event, EventTopic
-from broker_daemon.models.orders import FillRecord, OrderRecord, OrderRequest, OrderStatus, OrderType
+from broker_daemon.models.orders import FillRecord, OrderRecord, OrderRequest, OrderStatus, OrderType, Side
+from broker_daemon.observability.fund_sync import FundSyncService
 from broker_daemon.providers import BrokerProvider
 from broker_daemon.risk.engine import RiskContext, RiskEngine
 
@@ -28,13 +29,16 @@ class OrderManager:
         risk: RiskEngine,
         audit: AuditLogger,
         event_cb: Callable[[Event], Awaitable[None]] | None = None,
+        fund_sync: FundSyncService | None = None,
     ) -> None:
         self._provider = provider
         self._risk = risk
         self._audit = audit
         self._event_cb = event_cb
+        self._fund_sync = fund_sync
         self._orders: dict[str, OrderRecord] = {}
         self._fills: list[FillRecord] = []
+        self._fill_ids_seen: set[str] = set()
 
     def _infer_order_type(self, req: OrderRequest) -> OrderType:
         if req.limit is not None and req.stop is not None:
@@ -94,6 +98,7 @@ class OrderManager:
             tif=request.tif,
             status=OrderStatus.PENDING_SUBMIT,
             risk_check_result=risk_result.model_dump(mode="json"),
+            tags=dict(request.tags),
         )
 
         broker_res = await self._provider.place_order(request, client_order_id)
@@ -115,6 +120,21 @@ class OrderManager:
                 },
             )
         )
+
+        if self._fund_sync:
+            decision_id = _as_non_empty_string(request.tags.get("decision_id"))
+            decision_name = _as_non_empty_string(request.tags.get("decision_name"))
+            decision_summary = _as_non_empty_string(request.tags.get("decision_summary"))
+            decision_reasoning = _as_non_empty_string(request.tags.get("decision_reasoning"))
+            if decision_id and decision_name and decision_summary and decision_reasoning:
+                await self._fund_sync.sync_decision(
+                    decision_id=decision_id,
+                    symbol=request.symbol,
+                    side=request.side,
+                    title=decision_name,
+                    summary=decision_summary,
+                    reasoning_markdown=decision_reasoning,
+                )
         return record
 
     async def place_bracket(
@@ -127,6 +147,7 @@ class OrderManager:
         tp: float,
         sl: float,
         tif: str,
+        decision: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         request = OrderRequest(side=side, symbol=symbol, qty=qty, limit=entry, tif=tif)
         context = await self._risk_context()
@@ -154,7 +175,24 @@ class OrderManager:
                 },
             )
         )
-        return {"client_order_id": client_order_id, **result}
+        if self._fund_sync and isinstance(decision, dict):
+            decision_id = _as_non_empty_string(decision.get("decision_id"))
+            decision_name = _as_non_empty_string(decision.get("decision_name"))
+            decision_summary = _as_non_empty_string(decision.get("decision_summary"))
+            decision_reasoning = _as_non_empty_string(decision.get("decision_reasoning"))
+            if decision_id and decision_name and decision_summary and decision_reasoning:
+                await self._fund_sync.sync_decision(
+                    decision_id=decision_id,
+                    symbol=symbol,
+                    side=Side.BUY if str(side).lower() != "sell" else Side.SELL,
+                    title=decision_name,
+                    summary=decision_summary,
+                    reasoning_markdown=decision_reasoning,
+                )
+        out = {"client_order_id": client_order_id, **result}
+        if decision:
+            out["decision"] = dict(decision)
+        return out
 
     async def update_order_status(
         self,
@@ -175,8 +213,23 @@ class OrderManager:
         await self._audit.upsert_order(record)
 
     async def add_fill(self, fill: FillRecord) -> None:
+        if fill.fill_id:
+            if fill.fill_id in self._fill_ids_seen:
+                return
+            self._fill_ids_seen.add(fill.fill_id)
+
+        if fill.side is None:
+            order = self._orders.get(fill.client_order_id)
+            if order:
+                fill.side = order.side
+                decision_id = _as_non_empty_string(order.tags.get("decision_id"))
+                if decision_id:
+                    fill.decision_id = decision_id
+
         self._fills.append(fill)
         await self._audit.log_fill(fill)
+        if self._fund_sync:
+            await self._fund_sync.sync_fill(fill)
         await self._emit(Event(topic=EventTopic.FILLS, payload=fill.model_dump(mode="json")))
 
     async def cancel_order(self, order_id: str) -> dict[str, Any]:
@@ -220,7 +273,14 @@ class OrderManager:
         broker_fills = await self._provider.fills()
         for fill in broker_fills:
             await self._audit.log_fill(fill)
-        combined = [*self._fills, *broker_fills]
+        combined: list[FillRecord] = []
+        seen_ids: set[str] = set()
+        for fill in [*self._fills, *broker_fills]:
+            if fill.fill_id:
+                if fill.fill_id in seen_ids:
+                    continue
+                seen_ids.add(fill.fill_id)
+            combined.append(fill)
         if symbol:
             combined = [f for f in combined if f.symbol.upper() == symbol.upper()]
         return [f.model_dump(mode="json") for f in combined]
@@ -244,3 +304,9 @@ def _status_from_ib(raw: str) -> OrderStatus:
         "rejected": OrderStatus.REJECTED,
     }
     return mapping.get(normalized, OrderStatus.SUBMITTED)
+
+
+def _as_non_empty_string(value: Any) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    return ""

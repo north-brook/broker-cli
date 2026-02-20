@@ -239,13 +239,20 @@ class IBProvider(BrokerProvider):
         if len(args) < 2:
             return
         trade, fill = args[0], args[1]
+        execution = getattr(fill, "execution", None)
+        commission_report = getattr(fill, "commissionReport", None)
+        execution_side = getattr(execution, "side", None)
+        order_action = getattr(getattr(trade, "order", None), "action", None)
         payload = {
             "ib_order_id": getattr(getattr(trade, "order", None), "orderId", None),
             "client_order_id": getattr(getattr(trade, "order", None), "orderRef", None),
             "symbol": getattr(getattr(fill, "contract", None), "symbol", None),
-            "qty": getattr(getattr(fill, "execution", None), "shares", None),
-            "price": getattr(getattr(fill, "execution", None), "price", None),
-            "fill_id": getattr(getattr(fill, "execution", None), "execId", None),
+            "side": _normalize_side(execution_side or order_action),
+            "qty": getattr(execution, "shares", None),
+            "price": getattr(execution, "price", None),
+            "fill_id": getattr(execution, "execId", None),
+            "timestamp": getattr(fill, "time", datetime.now(UTC)),
+            "commission": _to_float_or_none(getattr(commission_report, "commission", None)),
         }
         asyncio.create_task(self._event_cb(Event(topic=EventTopic.FILLS, payload=payload)))
 
@@ -872,6 +879,7 @@ class IBProvider(BrokerProvider):
                         client_order_id=getattr(execution, "orderRef", ""),
                         ib_order_id=getattr(execution, "orderId", None),
                         symbol=getattr(contract, "symbol", ""),
+                        side=_normalize_side(getattr(execution, "side", None)),
                         qty=float(getattr(execution, "shares", 0.0)),
                         price=float(getattr(execution, "price", 0.0)),
                         commission=_to_float_or_none(getattr(commission_report, "commission", None)),
@@ -896,6 +904,17 @@ def _to_float_or_none(value: Any) -> float | None:
     if abs(out) >= IB_UNSET_DOUBLE_THRESHOLD:
         return None
     return out
+
+
+def _normalize_side(value: Any) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip().lower()
+    if normalized in {"buy", "bot", "b"}:
+        return "buy"
+    if normalized in {"sell", "sld", "s"}:
+        return "sell"
+    return None
 
 
 def _read_account_value(by_tag: dict[str, str], tag: str) -> float | None:

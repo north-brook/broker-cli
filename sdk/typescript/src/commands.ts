@@ -93,6 +93,9 @@ export interface CommandMap {
       client_order_id?: string;
       idempotency_key?: string;
       dry_run?: boolean;
+      decision_name?: string;
+      decision_summary?: string;
+      decision_reasoning?: string;
     },
     OrderPlaceResponse
   >;
@@ -105,6 +108,9 @@ export interface CommandMap {
       tp: number;
       sl: number;
       tif?: TimeInForce;
+      decision_name?: string;
+      decision_summary?: string;
+      decision_reasoning?: string;
     },
     OrderBracketResponse
   >;

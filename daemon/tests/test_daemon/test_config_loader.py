@@ -103,3 +103,22 @@ def test_load_config_supports_market_data_overrides(tmp_path: Path, monkeypatch)
     assert cfg.market_data.quote_intent_default == "last_only"
     assert cfg.market_data.probe_symbols == ["AAPL", "MSFT"]
     assert cfg.market_data.capability_ttl_seconds == 42
+
+
+def test_load_config_supports_observability_overrides(tmp_path: Path, monkeypatch) -> None:
+    _set_runtime_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("BROKER_OBSERVABILITY_FUND_DIR", str(tmp_path / "fund-atlas"))
+    monkeypatch.setenv("BROKER_OBSERVABILITY_AUTO_SYNC", "true")
+    monkeypatch.setenv("BROKER_OBSERVABILITY_AUTO_PUSH", "true")
+    monkeypatch.setenv("BROKER_OBSERVABILITY_ETRADE_FILL_POLL_SECONDS", "17")
+
+    broker_json = tmp_path / "config.json"
+    broker_json.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(broker_config, "DEFAULT_BROKER_CONFIG_JSON", broker_json)
+
+    cfg = broker_config.load_config()
+
+    assert cfg.observability.fund_dir == (tmp_path / "fund-atlas")
+    assert cfg.observability.auto_sync is True
+    assert cfg.observability.auto_push is True
+    assert cfg.observability.etrade_fill_poll_seconds == 17

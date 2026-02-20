@@ -34,6 +34,21 @@ def buy(
         "--idempotency-key",
         help="Stable key for safe retries (maps to client_order_id).",
     ),
+    decision_name: str = typer.Option(
+        ...,
+        "--decision-name",
+        help="Required title-case plain text decision title.",
+    ),
+    decision_summary: str = typer.Option(
+        ...,
+        "--decision-summary",
+        help="Required single-line plain text summary.",
+    ),
+    decision_reasoning: str = typer.Option(
+        ...,
+        "--decision-reasoning",
+        help="Required long-form markdown reasoning.",
+    ),
 ) -> None:
     _place(
         ctx,
@@ -45,6 +60,9 @@ def buy(
         tif=tif,
         dry_run=dry_run,
         idempotency_key=idempotency_key,
+        decision_name=decision_name,
+        decision_summary=decision_summary,
+        decision_reasoning=decision_reasoning,
     )
 
 
@@ -62,6 +80,21 @@ def sell(
         "--idempotency-key",
         help="Stable key for safe retries (maps to client_order_id).",
     ),
+    decision_name: str = typer.Option(
+        ...,
+        "--decision-name",
+        help="Required title-case plain text decision title.",
+    ),
+    decision_summary: str = typer.Option(
+        ...,
+        "--decision-summary",
+        help="Required single-line plain text summary.",
+    ),
+    decision_reasoning: str = typer.Option(
+        ...,
+        "--decision-reasoning",
+        help="Required long-form markdown reasoning.",
+    ),
 ) -> None:
     _place(
         ctx,
@@ -73,6 +106,9 @@ def sell(
         tif=tif,
         dry_run=dry_run,
         idempotency_key=idempotency_key,
+        decision_name=decision_name,
+        decision_summary=decision_summary,
+        decision_reasoning=decision_reasoning,
     )
 
 
@@ -86,9 +122,27 @@ def bracket(
     sl: float = typer.Option(..., "--sl", help="Stop-loss price."),
     side: Side = typer.Option(Side.BUY, "--side", case_sensitive=False, help="buy or sell."),
     tif: TIF = typer.Option(TIF.DAY, "--tif", case_sensitive=False, help="DAY, GTC, IOC."),
+    decision_name: str = typer.Option(
+        ...,
+        "--decision-name",
+        help="Required title-case plain text decision title.",
+    ),
+    decision_summary: str = typer.Option(
+        ...,
+        "--decision-summary",
+        help="Required single-line plain text summary.",
+    ),
+    decision_reasoning: str = typer.Option(
+        ...,
+        "--decision-reasoning",
+        help="Required long-form markdown reasoning.",
+    ),
 ) -> None:
     state = get_state(ctx)
     command = "order.bracket"
+    decision_name = _normalize_decision_name(decision_name)
+    decision_summary = _normalize_single_line(decision_summary, "decision summary")
+    decision_reasoning = _normalize_required_text(decision_reasoning, "decision reasoning")
     try:
         result = run_async(
             daemon_request(
@@ -102,6 +156,9 @@ def bracket(
                     "sl": sl,
                     "side": side.value,
                     "tif": tif.value,
+                    "decision_name": decision_name,
+                    "decision_summary": decision_summary,
+                    "decision_reasoning": decision_reasoning,
                 },
             )
         )
@@ -238,14 +295,23 @@ def _place(
     tif: TIF,
     dry_run: bool,
     idempotency_key: str | None,
+    decision_name: str,
+    decision_summary: str,
+    decision_reasoning: str,
 ) -> None:
     state = get_state(ctx)
     command = "order.place"
+    decision_name = _normalize_decision_name(decision_name)
+    decision_summary = _normalize_single_line(decision_summary, "decision summary")
+    decision_reasoning = _normalize_required_text(decision_reasoning, "decision reasoning")
     params: dict[str, object] = {
         "side": side,
         "symbol": symbol,
         "qty": qty,
         "tif": tif.value,
+        "decision_name": decision_name,
+        "decision_summary": decision_summary,
+        "decision_reasoning": decision_reasoning,
     }
     if limit is not None:
         params["limit"] = limit
@@ -267,3 +333,27 @@ def _place(
         )
     except BrokerError as exc:
         handle_error(exc, json_output=state.json_output, command=command, strict=state.strict)
+
+
+def _normalize_required_text(value: str, label: str) -> str:
+    out = value.strip()
+    if not out:
+        raise typer.BadParameter(f"{label} is required")
+    return out
+
+
+def _normalize_single_line(value: str, label: str) -> str:
+    out = _normalize_required_text(value, label)
+    if "\n" in out or "\r" in out:
+        raise typer.BadParameter(f"{label} must be single-line plain text")
+    return out
+
+
+def _normalize_decision_name(value: str) -> str:
+    out = _normalize_single_line(value, "decision name")
+    words = [part for part in out.split(" ") if part]
+    if not words:
+        raise typer.BadParameter("decision name is required")
+    if not all(word[0].isupper() for word in words if word and word[0].isalpha()):
+        raise typer.BadParameter("decision name must be title case plain text")
+    return out

@@ -105,6 +105,9 @@ else
   run_etrade_oauth_flow
 fi
 
+echo ""
+configure_fund_repository
+
 # ─── Done ─────────────────────────────────────────────────────────────────────
 
 echo ""

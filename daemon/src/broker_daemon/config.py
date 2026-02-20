@@ -118,6 +118,20 @@ class MarketDataConfig(BaseModel):
         return normalized or ["AAPL"]
 
 
+class ObservabilityConfig(BaseModel):
+    fund_dir: Path | None = None
+    auto_sync: bool = True
+    auto_push: bool = True
+    etrade_fill_poll_seconds: int = 10
+
+    @field_validator("etrade_fill_poll_seconds")
+    @classmethod
+    def _validate_etrade_fill_poll_seconds(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("etrade_fill_poll_seconds must be >= 1")
+        return value
+
+
 class AppConfig(BaseModel):
     provider: str = "ib"
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
@@ -128,6 +142,7 @@ class AppConfig(BaseModel):
     output: OutputConfig = Field(default_factory=OutputConfig)
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     market_data: MarketDataConfig = Field(default_factory=MarketDataConfig)
+    observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
 
     @field_validator("provider")
     @classmethod
@@ -144,6 +159,8 @@ class AppConfig(BaseModel):
         clone.logging.log_file = clone.logging.log_file.expanduser()
         clone.runtime.socket_path = clone.runtime.socket_path.expanduser()
         clone.runtime.pid_file = clone.runtime.pid_file.expanduser()
+        if clone.observability.fund_dir:
+            clone.observability.fund_dir = clone.observability.fund_dir.expanduser()
         return clone
 
     def ensure_dirs(self) -> None:
@@ -153,6 +170,8 @@ class AppConfig(BaseModel):
         expanded.logging.audit_db.parent.mkdir(parents=True, exist_ok=True)
         expanded.logging.log_file.parent.mkdir(parents=True, exist_ok=True)
         expanded.etrade.token_path.parent.mkdir(parents=True, exist_ok=True)
+        if expanded.observability.fund_dir:
+            expanded.observability.fund_dir.mkdir(parents=True, exist_ok=True)
 
 
 def _coerce_env_value(value: str) -> Any:
@@ -192,7 +211,7 @@ def _read_broker_json(path: Path) -> dict[str, Any]:
 def _extract_broker_config(data: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {}
     raw_broker = data.get("broker")
-    sections = {"gateway", "etrade", "risk", "logging", "agent", "output", "runtime", "market_data"}
+    sections = {"gateway", "etrade", "risk", "logging", "agent", "output", "runtime", "market_data", "observability"}
 
     if isinstance(raw_broker, dict):
         provider = raw_broker.get("provider")
@@ -215,7 +234,7 @@ def _extract_broker_config(data: dict[str, Any]) -> dict[str, Any]:
 
 def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
     result = dict(data)
-    sections = {"gateway", "etrade", "risk", "logging", "agent", "output", "runtime", "market_data"}
+    sections = {"gateway", "etrade", "risk", "logging", "agent", "output", "runtime", "market_data", "observability"}
     for key, raw in os.environ.items():
         if key == "BROKER_PROVIDER":
             result["provider"] = raw.strip()
