@@ -903,6 +903,9 @@ def _to_float_or_none(value: Any) -> float | None:
     # IB/TWS often uses very large doubles as "unset" sentinels.
     if abs(out) >= IB_UNSET_DOUBLE_THRESHOLD:
         return None
+    # IB also uses -1.0 to indicate "no data available" for prices.
+    if out == -1.0:
+        return None
     return out
 
 
