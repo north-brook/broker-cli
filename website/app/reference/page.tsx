@@ -605,7 +605,7 @@ export default function ReferencePage() {
                 <tbody>
                   {[
                     ["Config", "~/.config/broker/config.json"],
-                    ["Skill file", "~/.config/broker/skills/broker/SKILL.md"],
+                    ["Skill file", "~/.local/share/broker/source/skills/broker/SKILL.md"],
                     ["E*Trade tokens", "~/.config/broker/etrade_tokens.json"],
                     ["Daemon socket", "~/.local/state/broker/broker.sock"],
                     ["Daemon log", "~/.local/state/broker/broker.log"],

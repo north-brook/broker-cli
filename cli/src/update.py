@@ -55,8 +55,6 @@ def update(
             _reinstall_editable_packages(repo_root)
             reinstalled = True
 
-        _sync_skill_files(repo_root)
-
         print_output(
             {
                 "repo": str(repo_root),
@@ -137,17 +135,6 @@ def _reinstall_editable_packages(repo_root: Path) -> None:
         ],
         cwd=repo_root,
     )
-
-
-def _sync_skill_files(repo_root: Path) -> None:
-    config_home = Path(os.environ.get("BROKER_CONFIG_HOME", "").strip() or
-                       Path(os.environ.get("XDG_CONFIG_HOME", "").strip() or
-                            Path.home() / ".config") / "broker")
-    skill_source = repo_root / "skills" / "broker" / "SKILL.md"
-    skill_target = config_home / "skills" / "broker" / "SKILL.md"
-    if skill_source.is_file():
-        skill_target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(skill_source, skill_target)
 
 
 def _git(repo_root: Path, *args: str) -> str:
