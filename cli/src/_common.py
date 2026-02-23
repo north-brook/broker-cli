@@ -114,6 +114,7 @@ def print_output(
     request_id: str | None = None,
     title: str | None = None,
     strict: bool | None = None,
+    warnings: list[str] | None = None,
 ) -> None:
     _ = json_output
     _ = title
@@ -121,6 +122,7 @@ def print_output(
         "ok": True,
         "data": data,
         "error": None,
+        "warnings": warnings,
         "meta": build_meta(command=command, request_id=request_id, strict=strict),
     }
     print(json.dumps(payload, default=str, separators=(",", ":")))

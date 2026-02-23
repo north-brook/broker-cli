@@ -136,6 +136,26 @@ async def test_quote_retries_with_delayed_data_when_live_snapshot_has_nan_values
 
 
 @pytest.mark.asyncio
+async def test_quote_retries_with_delayed_data_when_live_returns_zero_sentinel(fake_ib_module: type[_FakeIB]) -> None:
+    """IB returns last=0.0 during off-hours; should trigger delayed fallback."""
+    fake_ib_module.live_by_symbol = {"AAPL": 0.0}
+    fake_ib_module.delayed_by_symbol = {"AAPL": 185.22}
+
+    provider = IBProvider(GatewayConfig())
+    quotes = await provider.quote(["AAPL"])
+    await provider.stop()
+
+    ib = fake_ib_module.instances[-1]
+    assert quotes[0].symbol == "AAPL"
+    assert quotes[0].last == pytest.approx(185.22)
+    assert quotes[0].meta is not None
+    assert quotes[0].meta.source == "delayed"
+    assert quotes[0].meta.fallback_used is True
+    assert ib.req_tickers_calls == [("AAPL",), ("AAPL",)]
+    assert ib.market_data_type_calls == [3, 1]
+
+
+@pytest.mark.asyncio
 async def test_quote_keeps_live_data_when_available(fake_ib_module: type[_FakeIB]) -> None:
     fake_ib_module.live_by_symbol = {"AAPL": 190.01}
     fake_ib_module.delayed_by_symbol = {"AAPL": 185.22}
@@ -201,3 +221,8 @@ def test_to_float_or_none_rejects_nan_and_ib_unset_sentinel() -> None:
     assert _to_float_or_none(-1) is None
     assert _to_float_or_none(0.0) == 0.0
     assert _to_float_or_none(150.25) == 150.25
+    # reject_zero: 0.0 treated as sentinel for price fields
+    assert _to_float_or_none(0.0, reject_zero=True) is None
+    assert _to_float_or_none(0.0, reject_zero=False) == 0.0
+    assert _to_float_or_none(150.25, reject_zero=True) == 150.25
+    assert _to_float_or_none(-1.0, reject_zero=True) is None
