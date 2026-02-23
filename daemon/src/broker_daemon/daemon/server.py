@@ -83,7 +83,7 @@ class DaemonServer:
         else:
             self._provider = IBProvider(cfg.gateway, audit=self._audit, event_cb=self._on_broker_event)
 
-        self._fund_sync = FundSyncService(cfg.observability, provider=self._provider)
+        self._fund_sync = FundSyncService(cfg.observability)
         self._market_data = MarketDataService(self._provider, settings=cfg.market_data)
         self._orders = OrderManager(
             provider=self._provider,
