@@ -61,6 +61,10 @@ class BrokerProvider(ABC):
     def is_connected(self) -> bool:
         raise NotImplementedError
 
+    async def check_health(self) -> bool:
+        """Active connectivity check.  Default: delegates to is_connected."""
+        return self.is_connected
+
     @abstractmethod
     async def quote(self, symbols: list[str], *, intent: QuoteIntent = "best_effort") -> list[Quote]:
         raise NotImplementedError

@@ -779,6 +779,18 @@ class DaemonServer:
                     )
 
             if self._provider.is_connected:
+                health_ok = await self._provider.check_health()
+                if not health_ok:
+                    self._connection_loss.on_disconnected()
+                    await self._broadcast_event(
+                        Event(
+                            topic=EventTopic.CONNECTION,
+                            payload={"event": "disconnected", "reason": "health_check_failed"},
+                        )
+                    )
+                    continue
+
+            if self._provider.is_connected:
                 try:
                     balance = await self._provider.balance()
                     pnl = await self._provider.pnl()

@@ -181,6 +181,39 @@ class IBProvider(BrokerProvider):
                 suggestion="Verify IB Gateway/TWS is running and check [gateway] config host/port/client_id.",
             )
 
+    async def check_health(self) -> bool:
+        """Ping IB Gateway to verify the session is alive.
+
+        Returns True if the session responded.  On failure forces disconnect
+        and schedules reconnect, then returns False.
+        """
+        if not self.is_connected:
+            return False
+        if self._reconnect_task and not self._reconnect_task.done():
+            return False
+        try:
+            await asyncio.wait_for(self._ib.reqCurrentTimeAsync(), timeout=5)
+            return True
+        except Exception:
+            logger.warning("IB Gateway health check failed; forcing disconnect")
+            await self._log_connection(
+                "auto_logoff_detected",
+                {"host": self._cfg.host, "port": self._cfg.port},
+            )
+            self._force_disconnect()
+            return False
+
+    def _force_disconnect(self) -> None:
+        """Force-close the IB connection, reset state, and trigger reconnect."""
+        if self._ib is not None:
+            try:
+                self._ib.disconnect()
+            except Exception:
+                pass
+        self._connected_at = None
+        self._listeners_registered = False
+        self._schedule_reconnect()
+
     def _register_event_handlers(self) -> None:
         if not self._ib or self._listeners_registered:
             return
