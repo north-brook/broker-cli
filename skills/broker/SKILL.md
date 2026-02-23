@@ -1,5 +1,5 @@
 ---
-name: broker-cli
+name: broker
 description: Complete reference for the broker CLI. Use when translating trading intentions into exact `broker` commands. Covers all commands, flags, defaults, workflows, and error handling.
 ---
 
