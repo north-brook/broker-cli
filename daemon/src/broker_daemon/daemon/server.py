@@ -345,13 +345,6 @@ class DaemonServer:
                 bar=bar,
                 rth_only=bool(p.get("rth_only", False)),
             )
-            if bool(p.get("strict", False)) and not bars:
-                raise BrokerError(
-                    ErrorCode.INVALID_SYMBOL,
-                    f"no historical bars returned for symbol '{symbol}'",
-                    details={"symbol": symbol, "period": period, "bar": bar},
-                    suggestion="Use a valid symbol or disable strict mode with --no-strict.",
-                )
             return {"bars": [b.model_dump(mode="json") for b in bars]}
 
         if cmd == "market.chain":
@@ -383,19 +376,6 @@ class DaemonServer:
             if selected_fields:
                 all_entries = [{field: entry.get(field) for field in selected_fields} for entry in all_entries]
             entries = all_entries[offset : offset + limit]
-            if bool(p.get("strict", False)) and not entries:
-                raise BrokerError(
-                    ErrorCode.INVALID_SYMBOL,
-                    f"no option contracts matched filters for '{symbol}'",
-                    details={
-                        "symbol": symbol,
-                        "expiry": p.get("expiry"),
-                        "strike_range": raw_strike_range,
-                        "offset": offset,
-                        "limit": limit,
-                    },
-                    suggestion="Relax filters, increase --limit, or disable strict mode with --no-strict.",
-                )
             payload["entries"] = entries
             payload["pagination"] = {
                 "total_entries": len(all_entries),
@@ -982,7 +962,6 @@ def _cli_envelope_schema() -> dict[str, Any]:
                     "command": {"type": "string"},
                     "request_id": {"type": "string"},
                     "timestamp": {"type": "string", "format": "date-time"},
-                    "strict": {"type": "boolean"},
                 },
                 "required": ["schema_version", "command", "request_id", "timestamp"],
             },
@@ -1055,7 +1034,6 @@ def _command_schema_registry() -> dict[str, dict[str, Any]]:
                 "period": {"enum": ["1d", "5d", "30d", "90d", "1y"]},
                 "bar": {"enum": ["1m", "5m", "15m", "1h", "1d"]},
                 "rth_only": {"type": "boolean"},
-                "strict": {"type": "boolean"},
             },
             "required": ["symbol"],
         },
@@ -1079,7 +1057,6 @@ def _command_schema_registry() -> dict[str, dict[str, Any]]:
                 "limit": {"type": "integer", "minimum": 1},
                 "offset": {"type": "integer", "minimum": 0},
                 "fields": {"type": "array", "items": {"enum": sorted(OPTION_CHAIN_FIELDS)}},
-                "strict": {"type": "boolean"},
             },
             "required": ["symbol"],
         },

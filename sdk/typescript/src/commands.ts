@@ -60,7 +60,6 @@ export interface CommandMap {
       period: HistoryPeriod;
       bar: BarSize;
       rth_only?: boolean;
-      strict?: boolean;
     },
     MarketHistoryResponse
   >;
@@ -73,7 +72,6 @@ export interface CommandMap {
       limit?: number;
       offset?: number;
       fields?: ChainField[];
-      strict?: boolean;
     },
     OptionChainResponse
   >;

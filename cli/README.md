@@ -26,5 +26,4 @@ broker schema quote.snapshot
 
 - `--help` is available on all command groups
 - output is machine-first JSON in a stable envelope (`ok/data/error/meta`)
-- `--strict` enables stricter empty-result validation where supported (`history`, `chain`)
 - when daemon is down, run `broker daemon status` and `broker daemon start`
