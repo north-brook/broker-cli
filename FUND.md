@@ -33,6 +33,7 @@ Example:
   "currency": "USD",
   "initialCapital": 100000.0,
   "benchmarks": [],
+  "paper": false,
   "cashInterestPolicy": {
     "enabled": true,
     "source": "inferred_from_broker_cash_balance"
@@ -47,6 +48,7 @@ Fields:
 - `currency: "USD"`
 - `initialCapital: number`
 - `benchmarks: string[]`
+- `paper: boolean` (optional; `true` when the fund uses a paper trading account)
 - `cashInterestPolicy.enabled: boolean`
 - `cashInterestPolicy.source: string`
 
