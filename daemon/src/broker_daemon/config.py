@@ -42,19 +42,6 @@ class ETradeConfig(BaseModel):
     persistent_auth: bool = False
 
 
-class RiskConfig(BaseModel):
-    max_position_pct: float = 10.0
-    max_order_value: float = 50_000.0
-    max_daily_loss_pct: float = 2.0
-    max_sector_exposure_pct: float = 30.0
-    max_single_name_pct: float = 10.0
-    max_open_orders: int = 20
-    order_rate_limit: int = 10
-    duplicate_window_seconds: int = 60
-    symbol_allowlist: list[str] = Field(default_factory=list)
-    symbol_blocklist: list[str] = Field(default_factory=list)
-
-
 class LoggingConfig(BaseModel):
     level: str = "INFO"
     audit_db: Path = DEFAULT_STATE_HOME / "audit.db"
@@ -63,8 +50,6 @@ class LoggingConfig(BaseModel):
 
 
 class AgentConfig(BaseModel):
-    heartbeat_timeout_seconds: int = 300
-    on_heartbeat_timeout: str = "warn"
     default_output: str = "json"
 
 
@@ -136,7 +121,6 @@ class AppConfig(BaseModel):
     provider: str = "ib"
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     etrade: ETradeConfig = Field(default_factory=ETradeConfig)
-    risk: RiskConfig = Field(default_factory=RiskConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     agent: AgentConfig = Field(default_factory=AgentConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
@@ -211,7 +195,7 @@ def _read_broker_json(path: Path) -> dict[str, Any]:
 def _extract_broker_config(data: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {}
     raw_broker = data.get("broker")
-    sections = {"gateway", "etrade", "risk", "logging", "agent", "output", "runtime", "market_data", "observability"}
+    sections = {"gateway", "etrade", "logging", "agent", "output", "runtime", "market_data", "observability"}
 
     if isinstance(raw_broker, dict):
         provider = raw_broker.get("provider")
@@ -234,7 +218,7 @@ def _extract_broker_config(data: dict[str, Any]) -> dict[str, Any]:
 
 def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
     result = dict(data)
-    sections = {"gateway", "etrade", "risk", "logging", "agent", "output", "runtime", "market_data", "observability"}
+    sections = {"gateway", "etrade", "logging", "agent", "output", "runtime", "market_data", "observability"}
     for key, raw in os.environ.items():
         if key == "BROKER_PROVIDER":
             result["provider"] = raw.strip()

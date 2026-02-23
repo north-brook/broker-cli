@@ -30,18 +30,6 @@ const DEFAULT_CONFIG: AppConfig = {
     auto_reconnect: true,
     reconnect_backoff_max: 30
   },
-  risk: {
-    max_position_pct: 10.0,
-    max_order_value: 50000,
-    max_daily_loss_pct: 2.0,
-    max_sector_exposure_pct: 30.0,
-    max_single_name_pct: 10.0,
-    max_open_orders: 20,
-    order_rate_limit: 10,
-    duplicate_window_seconds: 60,
-    symbol_allowlist: [],
-    symbol_blocklist: []
-  },
   logging: {
     level: "INFO",
     audit_db: path.join(DEFAULT_STATE_HOME, "audit.db"),
@@ -125,7 +113,6 @@ function mergeSection<T extends object>(target: T, source: Partial<T> | undefine
 function normalizeConfig(raw: Partial<AppConfig>): AppConfig {
   const cfg = cloneDefaults();
   cfg.gateway = mergeSection(cfg.gateway, raw.gateway);
-  cfg.risk = mergeSection(cfg.risk, raw.risk);
   cfg.logging = mergeSection(cfg.logging, raw.logging);
   cfg.agent = mergeSection(cfg.agent, raw.agent);
   cfg.output = mergeSection(cfg.output, raw.output);
@@ -141,7 +128,7 @@ function normalizeConfig(raw: Partial<AppConfig>): AppConfig {
 
 function applyEnvOverrides(base: AppConfig): AppConfig {
   const out = structuredClone(base);
-  const sections = new Set<ConfigSection>(["gateway", "risk", "logging", "agent", "output", "runtime"]);
+  const sections = new Set<ConfigSection>(["gateway", "logging", "agent", "output", "runtime"]);
 
   for (const [key, raw] of Object.entries(process.env)) {
     if (!key.startsWith("BROKER_") || raw === undefined) {
@@ -196,9 +183,6 @@ function extractBrokerConfig(raw: unknown): Partial<AppConfig> {
   if (broker) {
     if (isRecord(broker.gateway)) {
       out.gateway = broker.gateway as unknown as AppConfig["gateway"];
-    }
-    if (isRecord(broker.risk)) {
-      out.risk = broker.risk as unknown as AppConfig["risk"];
     }
     if (isRecord(broker.logging)) {
       out.logging = broker.logging as unknown as AppConfig["logging"];

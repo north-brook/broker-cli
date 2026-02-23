@@ -7,7 +7,6 @@ import {
   Lock,
   Shuffle,
   BarChart3,
-  ShieldCheck,
   Copy,
   Check,
   FlaskConical,
@@ -119,12 +118,6 @@ const features = [
       "Option chains with greeks, expiry filtering, and strike ranges. Agents can evaluate and execute complex derivatives strategies.",
     icon: BarChart3,
   },
-  {
-    title: "Risk Guardrails",
-    description:
-      "Exposure analysis by symbol, sector, or asset class. Cancel-all for instant flattening. Paper trading mode for safe development. Give agents power with built-in safety valves.",
-    icon: ShieldCheck,
-  },
 ];
 
 export default function Home() {
@@ -184,7 +177,7 @@ export default function Home() {
             <p>
               <span className="text-[var(--foreground)]">broker-cli</span>{" "}
               closes that gap. Install it, and your agent can check positions,
-              analyze risk, place orders, and manage a portfolio using the same
+              analyze exposure, place orders, and manage a portfolio using the same
               interface it uses for everything else:{" "}
               <span className="text-[var(--foreground)]">the terminal</span>.
             </p>
@@ -264,7 +257,7 @@ export default function Home() {
           <span className="font-semibold">Start safe:</span>
           <InlineCliCommand>broker daemon start --paper</InlineCliCommand>
           <span className="text-[var(--muted)]">
-            — after <InlineCliCommand>broker setup</InlineCliCommand>, use full paper trading mode. Test strategies with zero risk, go live
+            — after <InlineCliCommand>broker setup</InlineCliCommand>, use full paper trading mode. Test strategies with simulated funds, go live
             when ready.
           </span>
         </div>

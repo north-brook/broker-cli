@@ -9,21 +9,9 @@ export const CHAIN_FIELDS = ["symbol", "right", "strike", "expiry", "bid", "ask"
 export const QUOTE_INTENTS = ["best_effort", "top_of_book", "last_only"] as const;
 export const ORDER_STATUS_FILTERS = ["active", "filled", "cancelled", "all"] as const;
 export const EXPOSURE_GROUPS = ["sector", "asset_class", "currency", "symbol"] as const;
-export const EVENT_TOPICS = ["orders", "fills", "positions", "pnl", "risk", "connection"] as const;
-export const AUDIT_TABLES = ["orders", "commands", "risk"] as const;
+export const EVENT_TOPICS = ["orders", "fills", "positions", "pnl", "connection"] as const;
+export const AUDIT_TABLES = ["orders", "commands"] as const;
 export const AUDIT_SOURCES = ["cli", "sdk", "ts_sdk"] as const;
-export const RISK_PARAMS = [
-  "max_position_pct",
-  "max_order_value",
-  "max_daily_loss_pct",
-  "max_sector_exposure_pct",
-  "max_single_name_pct",
-  "max_open_orders",
-  "order_rate_limit",
-  "duplicate_window_seconds",
-  "symbol_allowlist",
-  "symbol_blocklist"
-] as const;
 
 export type OrderSide = (typeof ORDER_SIDES)[number];
 export type TimeInForce = (typeof TIME_IN_FORCE_VALUES)[number];
@@ -37,7 +25,6 @@ export type ExposureGroupBy = (typeof EXPOSURE_GROUPS)[number];
 export type EventTopic = (typeof EVENT_TOPICS)[number];
 export type AuditTable = (typeof AUDIT_TABLES)[number];
 export type AuditSource = (typeof AUDIT_SOURCES)[number];
-export type RiskParam = (typeof RISK_PARAMS)[number];
 
 export interface Quote {
   symbol: string;
@@ -175,7 +162,6 @@ export interface OrderRecord {
   fill_price: number | null;
   fill_qty: number;
   commission: number | null;
-  risk_check_result: Record<string, JsonValue>;
 }
 
 export interface FillRecord {
@@ -191,35 +177,6 @@ export interface FillRecord {
   decision_id?: string | null;
 }
 
-export interface RiskCheckResult {
-  ok: boolean;
-  reasons: string[];
-  details: Record<string, JsonValue>;
-  suggestion?: string | null;
-}
-
-export interface RiskConfigSnapshot {
-  max_position_pct: number;
-  max_order_value: number;
-  max_daily_loss_pct: number;
-  max_sector_exposure_pct: number;
-  max_single_name_pct: number;
-  max_open_orders: number;
-  order_rate_limit: number;
-  duplicate_window_seconds: number;
-  symbol_allowlist: string[];
-  symbol_blocklist: string[];
-  halted: boolean;
-}
-
-export interface RiskOverride {
-  param: string;
-  value: number;
-  reason: string;
-  created_at: string;
-  expires_at: string;
-}
-
 export interface DaemonStatusResponse {
   uptime_seconds: number;
   connection: {
@@ -233,7 +190,6 @@ export interface DaemonStatusResponse {
     last_error: string | null;
   };
   provider_capabilities: Record<string, boolean>;
-  risk_halted: boolean;
   time_sync_delta_ms: number | null;
   socket: string;
 }
@@ -284,8 +240,6 @@ export interface PortfolioSnapshotResponse {
   pnl: PnLSummary;
   exposure: ExposureEntry[];
   exposure_by: string;
-  risk_limits: RiskConfigSnapshot;
-  risk_halted: boolean;
   connection: DaemonStatusResponse["connection"];
   provider_capabilities: ProviderQuoteCapabilities;
   provider_capabilities_cache: CapabilityCacheMeta;
@@ -294,8 +248,6 @@ export interface PortfolioSnapshotResponse {
 export interface OrderPlaceResponse {
   order: OrderRecord;
   dry_run: boolean;
-  risk_check: RiskCheckResult;
-  submit_allowed: boolean;
 }
 
 export interface OrderBracketResponse {
@@ -326,31 +278,10 @@ export interface FillsListResponse {
   fills: FillRecord[];
 }
 
-export interface RiskLimitsResponse {
-  limits: RiskConfigSnapshot;
-}
-
-export interface RiskSetResponse {
-  limits: RiskConfigSnapshot;
-}
-
-export interface RiskHaltResponse {
-  halted: boolean;
-}
-
-export interface RiskResumeResponse {
-  halted: boolean;
-}
-
-export interface RiskOverrideResponse {
-  override: RiskOverride;
-}
-
 export interface KeepaliveResponse {
   ok: boolean;
   latency_ms: number | null;
   connected: boolean;
-  halted: boolean;
 }
 
 export interface AuditCommandsRow {
@@ -379,13 +310,6 @@ export interface AuditOrdersRow {
   fill_price: number | null;
   fill_qty: number | null;
   commission: number | null;
-  risk_check_result: string;
-}
-
-export interface AuditRiskRow {
-  timestamp: string;
-  event_type: string;
-  details: string;
 }
 
 export interface AuditCommandsResponse {
@@ -394,10 +318,6 @@ export interface AuditCommandsResponse {
 
 export interface AuditOrdersResponse {
   orders: AuditOrdersRow[];
-}
-
-export interface AuditRiskResponse {
-  risk_events: AuditRiskRow[];
 }
 
 export interface AuditExportResponse {
@@ -439,11 +359,3 @@ export interface BracketInput {
   decision_reasoning?: string;
 }
 
-export interface RiskCheckInput {
-  side: OrderSide;
-  symbol: string;
-  qty: number;
-  limit?: number;
-  stop?: number;
-  tif?: TimeInForce;
-}

@@ -9,18 +9,17 @@ import daemon
 import market
 import orders
 import portfolio
-import risk
 import schema_cmd
 import update
 from _common import CLIState, build_typer, load_config
 
 app = build_typer(
-    """Broker command-line interface for trading, portfolio, risk, and audit workflows.
+    """Broker command-line interface for trading, portfolio, and audit workflows.
 
     Examples:
       broker quote AAPL MSFT
       broker order buy AAPL 10 --limit 180
-      broker check --side buy --symbol AAPL --qty 50
+      broker positions
     """
 )
 
@@ -28,7 +27,6 @@ app.add_typer(daemon.app, name="daemon")
 app.add_typer(market.app)
 app.add_typer(orders.order_app, name="order")
 app.add_typer(portfolio.app)
-app.add_typer(risk.app)
 app.add_typer(audit.app, name="audit")
 
 # Flat commands required by spec.

@@ -40,19 +40,6 @@ export interface GatewayConfig {
   reconnect_backoff_max: number;
 }
 
-export interface RiskConfig {
-  max_position_pct: number;
-  max_order_value: number;
-  max_daily_loss_pct: number;
-  max_sector_exposure_pct: number;
-  max_single_name_pct: number;
-  max_open_orders: number;
-  order_rate_limit: number;
-  duplicate_window_seconds: number;
-  symbol_allowlist: string[];
-  symbol_blocklist: string[];
-}
-
 export interface LoggingConfig {
   level: string;
   audit_db: string;
@@ -79,7 +66,6 @@ export interface RuntimeConfig {
 
 export interface AppConfig {
   gateway: GatewayConfig;
-  risk: RiskConfig;
   logging: LoggingConfig;
   agent: AgentConfig;
   output: OutputConfig;

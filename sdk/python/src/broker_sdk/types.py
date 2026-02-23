@@ -13,21 +13,9 @@ CHAIN_FIELDS = ("symbol", "right", "strike", "expiry", "bid", "ask", "implied_vo
 QUOTE_INTENTS = ("best_effort", "top_of_book", "last_only")
 ORDER_STATUS_FILTERS = ("active", "filled", "cancelled", "all")
 EXPOSURE_GROUPS = ("sector", "asset_class", "currency", "symbol")
-EVENT_TOPICS = ("orders", "fills", "positions", "pnl", "risk", "connection")
-AUDIT_TABLES = ("orders", "commands", "risk")
+EVENT_TOPICS = ("orders", "fills", "positions", "pnl", "connection")
+AUDIT_TABLES = ("orders", "commands")
 AUDIT_SOURCES = ("cli", "sdk", "ts_sdk")
-RISK_PARAMS = (
-    "max_position_pct",
-    "max_order_value",
-    "max_daily_loss_pct",
-    "max_sector_exposure_pct",
-    "max_single_name_pct",
-    "max_open_orders",
-    "order_rate_limit",
-    "duplicate_window_seconds",
-    "symbol_allowlist",
-    "symbol_blocklist",
-)
 
 OrderSide: TypeAlias = Literal["buy", "sell"]
 TimeInForce: TypeAlias = Literal["DAY", "GTC", "IOC"]
@@ -38,18 +26,6 @@ ChainField: TypeAlias = Literal["symbol", "right", "strike", "expiry", "bid", "a
 QuoteIntent: TypeAlias = Literal["best_effort", "top_of_book", "last_only"]
 OrderStatusFilter: TypeAlias = Literal["active", "filled", "cancelled", "all"]
 ExposureGroupBy: TypeAlias = Literal["sector", "asset_class", "currency", "symbol"]
-EventTopic: TypeAlias = Literal["orders", "fills", "positions", "pnl", "risk", "connection"]
-AuditTable: TypeAlias = Literal["orders", "commands", "risk"]
+EventTopic: TypeAlias = Literal["orders", "fills", "positions", "pnl", "connection"]
+AuditTable: TypeAlias = Literal["orders", "commands"]
 AuditSource: TypeAlias = Literal["cli", "sdk", "ts_sdk"]
-RiskParam: TypeAlias = Literal[
-    "max_position_pct",
-    "max_order_value",
-    "max_daily_loss_pct",
-    "max_sector_exposure_pct",
-    "max_single_name_pct",
-    "max_open_orders",
-    "order_rate_limit",
-    "duplicate_window_seconds",
-    "symbol_allowlist",
-    "symbol_blocklist",
-]

@@ -1,4 +1,4 @@
-"""Order state machine and risk-enforced order entry."""
+"""Order state machine and order entry."""
 
 from __future__ import annotations
 
@@ -11,7 +11,6 @@ from broker_daemon.models.events import Event, EventTopic
 from broker_daemon.models.orders import FillRecord, OrderRecord, OrderRequest, OrderStatus, OrderType, Side
 from broker_daemon.observability.fund_sync import FundSyncService
 from broker_daemon.providers import BrokerProvider
-from broker_daemon.risk.engine import RiskContext, RiskEngine
 
 ACTIVE_STATUSES = {
     OrderStatus.SUBMITTED,
@@ -26,13 +25,11 @@ class OrderManager:
         self,
         *,
         provider: BrokerProvider,
-        risk: RiskEngine,
         audit: AuditLogger,
         event_cb: Callable[[Event], Awaitable[None]] | None = None,
         fund_sync: FundSyncService | None = None,
     ) -> None:
         self._provider = provider
-        self._risk = risk
         self._audit = audit
         self._event_cb = event_cb
         self._fund_sync = fund_sync
@@ -49,43 +46,10 @@ class OrderManager:
             return OrderType.STOP
         return OrderType.MARKET
 
-    async def _risk_context(self) -> RiskContext:
-        balance = await self._provider.balance()
-        nlv = float(balance.net_liquidation or 0.0)
-        positions = await self._provider.positions()
-
-        symbols = [p.symbol for p in positions]
-        quotes = await self._provider.quote(symbols) if symbols else []
-        marks = {
-            q.symbol: (q.last if q.last is not None else q.bid if q.bid is not None else q.ask if q.ask is not None else 0.0)
-            for q in quotes
-        }
-
-        position_values: dict[str, float] = {}
-        for p in positions:
-            mark = marks.get(p.symbol)
-            if mark is None:
-                mark = p.market_price if p.market_price is not None else p.avg_cost
-            position_values[p.symbol] = float(mark) * p.qty
-
-        pnl = await self._provider.pnl()
-        open_orders = len([o for o in self._orders.values() if o.status in ACTIVE_STATUSES])
-
-        return RiskContext(
-            nlv=nlv,
-            daily_pnl=pnl.total,
-            open_orders=open_orders,
-            mark_prices=marks,
-            position_values=position_values,
-        )
-
     async def place_order(self, request: OrderRequest) -> OrderRecord:
         client_order_id = request.client_order_id or str(uuid.uuid4())
         if client_order_id in self._orders:
             return self._orders[client_order_id]
-
-        context = await self._risk_context()
-        risk_result = self._risk.assert_order(request, context)
 
         record = OrderRecord(
             client_order_id=client_order_id,
@@ -97,7 +61,6 @@ class OrderManager:
             stop_price=request.stop,
             tif=request.tif,
             status=OrderStatus.PENDING_SUBMIT,
-            risk_check_result=risk_result.model_dump(mode="json"),
             tags=dict(request.tags),
         )
 
@@ -108,7 +71,6 @@ class OrderManager:
 
         self._orders[client_order_id] = record
         await self._audit.upsert_order(record)
-        await self._audit.log_risk_event("check_passed", {"client_order_id": client_order_id})
 
         await self._emit(
             Event(
@@ -149,10 +111,6 @@ class OrderManager:
         tif: str,
         decision: dict[str, str] | None = None,
     ) -> dict[str, Any]:
-        request = OrderRequest(side=side, symbol=symbol, qty=qty, limit=entry, tif=tif)
-        context = await self._risk_context()
-        self._risk.assert_order(request, context)
-
         client_order_id = str(uuid.uuid4())
         result = await self._provider.place_bracket(
             side=side,
@@ -164,7 +122,6 @@ class OrderManager:
             tif=tif,
             client_order_id=client_order_id,
         )
-        await self._audit.log_risk_event("check_passed", {"client_order_id": client_order_id, "type": "bracket"})
         await self._emit(
             Event(
                 topic=EventTopic.ORDERS,

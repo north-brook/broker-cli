@@ -1,12 +1,11 @@
 # Broker Daemon
 
-`broker-daemon` is the long-running backend for broker execution and risk enforcement.
+`broker-daemon` is the long-running backend for broker execution.
 
 ## Responsibilities
 
 - maintain session state to IB Gateway/TWS
 - route requests from CLI/SDK clients
-- enforce risk controls before execution
 - persist audit events for traceability
 
 ## Interfaces

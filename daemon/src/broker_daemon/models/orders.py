@@ -71,7 +71,6 @@ class OrderRecord(BaseModel):
     fill_price: float | None = None
     fill_qty: float = 0
     commission: float | None = None
-    risk_check_result: dict[str, Any] = Field(default_factory=dict)
     tags: dict[str, Any] = Field(default_factory=dict)
 
 

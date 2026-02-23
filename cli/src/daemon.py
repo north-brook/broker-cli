@@ -66,7 +66,7 @@ def stop(ctx: typer.Context) -> None:
         handle_error(exc, json_output=state.json_output, command=command, strict=state.strict)
 
 
-@app.command("status", help="Show daemon uptime, IB connection state, and risk halt status.")
+@app.command("status", help="Show daemon uptime and connection state.")
 def status(ctx: typer.Context) -> None:
     state = get_state(ctx)
     command = "daemon.status"

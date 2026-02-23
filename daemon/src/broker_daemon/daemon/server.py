@@ -17,7 +17,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from broker_daemon.audit.logger import AuditLogger
-from broker_daemon.audit.query import export_rows_to_csv, query_commands, query_orders, query_risk_events
+from broker_daemon.audit.query import export_rows_to_csv, query_commands, query_orders
 from broker_daemon.config import AppConfig, load_config
 from broker_daemon.daemon.market_data import MarketDataService
 from broker_daemon.daemon.order_manager import OrderManager
@@ -28,8 +28,6 @@ from broker_daemon.models.orders import FillRecord, OrderRequest
 from broker_daemon.observability import FundSyncService
 from broker_daemon.protocol import ErrorResponse, EventEnvelope, Request, Response, decode_request, encode_model, frame_payload, read_framed
 from broker_daemon.providers import IBProvider
-from broker_daemon.risk.engine import RiskEngine
-from broker_daemon.risk.monitor import ConnectionLossMonitor, HeartbeatMonitor
 
 logger = logging.getLogger(__name__)
 
@@ -52,17 +50,10 @@ KNOWN_COMMANDS: tuple[str, ...] = (
     "order.cancel",
     "orders.cancel_all",
     "fills.list",
-    "risk.check",
-    "risk.limits",
-    "risk.set",
-    "risk.halt",
-    "risk.resume",
-    "risk.override",
     "runtime.keepalive",
     "events.subscribe",
     "audit.commands",
     "audit.orders",
-    "audit.risk",
     "audit.export",
     "schema.get",
 )
@@ -84,9 +75,6 @@ class DaemonServer:
         self._shutdown = asyncio.Event()
 
         self._audit = AuditLogger(cfg.logging.audit_db)
-        self._risk = RiskEngine(cfg.risk)
-        self._heartbeat = HeartbeatMonitor(cfg.agent.heartbeat_timeout_seconds)
-        self._connection_loss = ConnectionLossMonitor(threshold_seconds=30)
 
         if cfg.provider == "etrade":
             from broker_daemon.providers.etrade import ETradeProvider
@@ -99,7 +87,6 @@ class DaemonServer:
         self._market_data = MarketDataService(self._provider, settings=cfg.market_data)
         self._orders = OrderManager(
             provider=self._provider,
-            risk=self._risk,
             audit=self._audit,
             event_cb=self._broadcast_event,
             fund_sync=self._fund_sync,
@@ -453,8 +440,6 @@ class DaemonServer:
                 "pnl": pnl.model_dump(mode="json"),
                 "exposure": exposure_rows,
                 "exposure_by": exposure_by,
-                "risk_limits": self._risk.snapshot().model_dump(mode="json"),
-                "risk_halted": self._risk.halted,
                 "connection": self._provider.status().model_dump(mode="json"),
                 "provider_capabilities": provider_capabilities.model_dump(mode="json"),
                 "provider_capabilities_cache": capabilities_cache,
@@ -474,36 +459,16 @@ class DaemonServer:
             req = OrderRequest.model_validate(raw)
 
             if dry_run:
-                context = await self._orders._risk_context()  # noqa: SLF001
-                risk_result = self._risk.check_order(req, context)
-                event_type = "check_passed" if risk_result.ok else "check_failed"
-                await self._audit.log_risk_event(
-                    event_type,
-                    {
-                        "dry_run": True,
-                        "symbol": req.symbol,
-                        "side": req.side.value,
-                        "qty": req.qty,
-                        **risk_result.model_dump(mode="json"),
-                    },
-                )
-                preview_order = _build_dry_run_order_preview(
-                    req,
-                    risk_result=risk_result.model_dump(mode="json"),
-                )
+                preview_order = _build_dry_run_order_preview(req)
                 return {
                     "order": preview_order,
                     "dry_run": True,
-                    "risk_check": risk_result.model_dump(mode="json"),
-                    "submit_allowed": bool(risk_result.ok),
                 }
 
             record = await self._orders.place_order(req)
             return {
                 "order": record.model_dump(mode="json"),
                 "dry_run": False,
-                "risk_check": record.risk_check_result,
-                "submit_allowed": True,
             }
 
         if cmd == "order.bracket":
@@ -563,55 +528,7 @@ class DaemonServer:
                 rows = [r for r in rows if str(r.get("timestamp", "")) >= str(since)]
             return {"fills": rows}
 
-        if cmd == "risk.check":
-            req = OrderRequest.model_validate(p)
-            context = await self._orders._risk_context()  # noqa: SLF001
-            result = self._risk.check_order(req, context)
-            event_type = "check_passed" if result.ok else "check_failed"
-            await self._audit.log_risk_event(event_type, result.model_dump(mode="json"))
-            return result.model_dump(mode="json")
-
-        if cmd == "risk.limits":
-            return {"limits": self._risk.snapshot().model_dump(mode="json")}
-
-        if cmd == "risk.set":
-            try:
-                snapshot = self._risk.set_limit(str(p["param"]), p["value"])
-            except ValueError as exc:
-                raise BrokerError(ErrorCode.INVALID_ARGS, str(exc)) from exc
-            await self._audit.log_risk_event("set", {"param": p["param"], "value": p["value"]})
-            return {"limits": snapshot.model_dump(mode="json")}
-
-        if cmd == "risk.halt":
-            self._risk.halt()
-            await self._orders.cancel_all()
-            await self._audit.log_risk_event("halt", {"source": request.source})
-            await self._broadcast_event(Event(topic=EventTopic.RISK, payload={"event": "halt"}))
-            return {"halted": True}
-
-        if cmd == "risk.resume":
-            self._risk.resume()
-            await self._audit.log_risk_event("resume", {"source": request.source})
-            await self._broadcast_event(Event(topic=EventTopic.RISK, payload={"event": "resume"}))
-            return {"halted": False}
-
-        if cmd == "risk.override":
-            try:
-                duration = str(p.get("duration", "1h"))
-                seconds = self._risk.parse_duration(duration)
-                override = self._risk.override_limit(
-                    param=str(p["param"]),
-                    value=p["value"],
-                    duration_seconds=seconds,
-                    reason=str(p.get("reason", "manual override")),
-                )
-            except ValueError as exc:
-                raise BrokerError(ErrorCode.INVALID_ARGS, str(exc)) from exc
-            await self._audit.log_risk_event("override", override.model_dump(mode="json"))
-            return {"override": override.model_dump(mode="json")}
-
         if cmd == "runtime.keepalive":
-            self._heartbeat.beat()
             sent_at = p.get("sent_at")
             latency_ms = None
             if sent_at is not None:
@@ -623,7 +540,6 @@ class DaemonServer:
                 "ok": True,
                 "latency_ms": latency_ms,
                 "connected": self._provider.is_connected,
-                "halted": self._risk.halted,
             }
 
         if cmd == "audit.commands":
@@ -639,10 +555,6 @@ class DaemonServer:
             rows = await query_orders(self._audit, status=p.get("status"), since=p.get("since"))
             return {"orders": rows}
 
-        if cmd == "audit.risk":
-            rows = await query_risk_events(self._audit, event_type=p.get("type"))
-            return {"risk_events": rows}
-
         if cmd == "audit.export":
             target = Path(str(p["output"])).expanduser()
             fmt = str(p.get("format", "csv"))
@@ -657,8 +569,6 @@ class DaemonServer:
                     since=p.get("since"),
                     request_id=p.get("request_id"),
                 )
-            elif table == "risk":
-                rows = await query_risk_events(self._audit, event_type=p.get("type"))
             else:
                 rows = await query_orders(self._audit, status=p.get("status"), since=p.get("since"))
             export_rows_to_csv(rows, target)
@@ -676,19 +586,11 @@ class DaemonServer:
             "uptime_seconds": round(time.monotonic() - self._start_monotonic, 3),
             "connection": status.model_dump(mode="json"),
             "provider_capabilities": dict(self._provider.capabilities),
-            "risk_halted": self._risk.halted,
             "time_sync_delta_ms": None,
             "socket": str(self.socket_path),
         }
 
     async def _on_broker_event(self, event: Event) -> None:
-        if event.topic == EventTopic.CONNECTION:
-            label = str(event.payload.get("event", ""))
-            if label == "connected":
-                self._connection_loss.on_connected()
-            if label == "disconnected":
-                self._connection_loss.on_disconnected()
-
         if event.topic == EventTopic.ORDERS:
             client_order_id = event.payload.get("client_order_id")
             status = event.payload.get("status")
@@ -744,53 +646,15 @@ class DaemonServer:
         while not self._shutdown.is_set():
             await asyncio.sleep(5)
 
-            if self._connection_loss.breached() and not self._risk.halted:
-                self._risk.halt()
-                await self._audit.log_risk_event("halt", {"reason": "connection_loss"})
-                await self._broadcast_event(Event(topic=EventTopic.RISK, payload={"event": "halt", "reason": "connection_loss"}))
-
-            if self._heartbeat.is_timed_out():
-                seconds = self._heartbeat.seconds_since_last()
-                await self._audit.log_risk_event("heartbeat_timeout", {"seconds_since_last": seconds})
-                if self._cfg.agent.on_heartbeat_timeout == "halt" and not self._risk.halted:
-                    self._risk.halt()
-                    await self._broadcast_event(
-                        Event(topic=EventTopic.RISK, payload={"event": "halt", "reason": "heartbeat_timeout"})
-                    )
-
             if self._provider.is_connected:
                 health_ok = await self._provider.check_health()
                 if not health_ok:
-                    self._connection_loss.on_disconnected()
                     await self._broadcast_event(
                         Event(
                             topic=EventTopic.CONNECTION,
                             payload={"event": "disconnected", "reason": "health_check_failed"},
                         )
                     )
-                    continue
-
-            if self._provider.is_connected:
-                try:
-                    balance = await self._provider.balance()
-                    pnl = await self._provider.pnl()
-                    nlv = float(balance.net_liquidation or 0.0)
-                    breached, loss_pct = self._risk.check_drawdown_breaker(pnl.total, nlv)
-                    if breached and not self._risk.halted:
-                        self._risk.halt()
-                        await self._audit.log_risk_event(
-                            "halt",
-                            {
-                                "reason": "drawdown_breaker",
-                                "daily_pnl": pnl.total,
-                                "loss_pct": loss_pct,
-                            },
-                        )
-                        await self._broadcast_event(
-                            Event(topic=EventTopic.RISK, payload={"event": "halt", "reason": "drawdown_breaker"})
-                        )
-                except Exception:
-                    logger.debug("drawdown monitor skipped due to transient error", exc_info=True)
 
     async def _fills_reconcile_loop(self) -> None:
         interval = self._cfg.observability.etrade_fill_poll_seconds
@@ -888,7 +752,7 @@ def _parse_chain_fields(raw: Any) -> list[str] | None:
     return list(dict.fromkeys(values))
 
 
-def _build_dry_run_order_preview(req: OrderRequest, *, risk_result: dict[str, Any]) -> dict[str, Any]:
+def _build_dry_run_order_preview(req: OrderRequest) -> dict[str, Any]:
     if req.limit is not None and req.stop is not None:
         order_type = "stop_limit"
     elif req.limit is not None:
@@ -898,7 +762,6 @@ def _build_dry_run_order_preview(req: OrderRequest, *, risk_result: dict[str, An
     else:
         order_type = "market"
 
-    status = "DryRunAccepted" if bool(risk_result.get("ok")) else "DryRunRejected"
     client_order_id = req.client_order_id or f"dryrun-{int(time.time() * 1000)}"
     return {
         "client_order_id": client_order_id,
@@ -910,13 +773,12 @@ def _build_dry_run_order_preview(req: OrderRequest, *, risk_result: dict[str, An
         "limit_price": req.limit,
         "stop_price": req.stop,
         "tif": req.tif.value,
-        "status": status,
+        "status": "DryRunPreview",
         "submitted_at": datetime.now(UTC).isoformat(),
         "filled_at": None,
         "fill_price": None,
         "fill_qty": 0.0,
         "commission": None,
-        "risk_check_result": risk_result,
     }
 
 
@@ -1107,8 +969,6 @@ def _command_schema_registry() -> dict[str, dict[str, Any]]:
                 "positions",
                 "balance",
                 "pnl",
-                "risk_limits",
-                "risk_halted",
                 "connection",
             ],
         },
@@ -1140,10 +1000,8 @@ def _command_schema_registry() -> dict[str, dict[str, Any]]:
             "properties": {
                 "order": {"type": "object"},
                 "dry_run": {"type": "boolean"},
-                "risk_check": {"type": "object"},
-                "submit_allowed": {"type": "boolean"},
             },
-            "required": ["order", "dry_run", "risk_check", "submit_allowed"],
+            "required": ["order", "dry_run"],
         },
     }
 
@@ -1164,23 +1022,6 @@ def _command_schema_registry() -> dict[str, dict[str, Any]]:
                 "decision_reasoning": {"type": "string"},
             },
             "required": ["symbol", "qty", "entry", "tp", "sl", "decision_name", "decision_summary", "decision_reasoning"],
-        },
-        "result": {"type": "object", "additionalProperties": True},
-    }
-
-    base["risk.check"] = {
-        "params": {
-            "type": "object",
-            "additionalProperties": False,
-            "properties": {
-                "side": {"enum": ["buy", "sell"]},
-                "symbol": {"type": "string"},
-                "qty": {"type": "number", "exclusiveMinimum": 0},
-                "limit": {"type": "number"},
-                "stop": {"type": "number"},
-                "tif": {"enum": ["DAY", "GTC", "IOC"]},
-            },
-            "required": ["side", "symbol", "qty"],
         },
         "result": {"type": "object", "additionalProperties": True},
     }

@@ -55,18 +55,6 @@ async def query_orders(
     )
 
 
-async def query_risk_events(
-    logger: AuditLogger,
-    *,
-    event_type: str | None = None,
-) -> list[dict[str, Any]]:
-    where, values = _where_clause({"event_type": event_type})
-    return await logger.fetch_all(
-        f"SELECT timestamp, event_type, details FROM risk_events {where} ORDER BY id DESC",
-        tuple(values),
-    )
-
-
 def export_rows_to_csv(rows: list[dict[str, Any]], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if not rows:

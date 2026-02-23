@@ -4,7 +4,7 @@ import pytest
 
 from broker_daemon.exceptions import ErrorCode, BrokerError
 from broker_daemon.protocol import ErrorResponse, Response
-from broker_sdk import EVENT_TOPICS, RISK_PARAMS
+from broker_sdk import EVENT_TOPICS
 from broker_sdk.client import _unwrap_response
 
 
@@ -26,4 +26,3 @@ def test_unwrap_error() -> None:
 
 def test_exported_constants_are_non_empty() -> None:
     assert len(EVENT_TOPICS) > 0
-    assert "max_order_value" in RISK_PARAMS

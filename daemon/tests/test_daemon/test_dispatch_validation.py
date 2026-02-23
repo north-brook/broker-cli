@@ -6,9 +6,7 @@ from broker_daemon.config import AppConfig, LoggingConfig, RuntimeConfig
 from broker_daemon.daemon.server import DaemonServer
 from broker_daemon.exceptions import ErrorCode, BrokerError
 from broker_daemon.models.market import OptionChain, OptionChainEntry
-from broker_daemon.models.risk import RiskCheckResult
 from broker_daemon.protocol import Request
-from broker_daemon.risk.engine import RiskContext
 
 
 def _test_config(tmp_path) -> AppConfig:
@@ -120,25 +118,13 @@ async def test_dispatch_chain_applies_limit_offset_and_fields(monkeypatch: pytes
 async def test_dispatch_order_place_dry_run_preview(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     server = DaemonServer(_test_config(tmp_path))
 
-    async def fake_risk_context() -> RiskContext:
-        return RiskContext(nlv=1_000_000.0, daily_pnl=0.0, open_orders=0, mark_prices={"AAPL": 200.0})
-
     called: dict[str, bool] = {"place_order": False}
 
     async def fake_place_order(*_: object, **__: object) -> object:
         called["place_order"] = True
         raise AssertionError("place_order should not be called for dry-run")
 
-    def fake_check_order(*_: object, **__: object) -> RiskCheckResult:
-        return RiskCheckResult(ok=True, reasons=[], details={"notional": 200.0})
-
-    async def fake_log_risk_event(*_: object, **__: object) -> None:
-        return None
-
-    monkeypatch.setattr(server._orders, "_risk_context", fake_risk_context)  # noqa: SLF001
     monkeypatch.setattr(server._orders, "place_order", fake_place_order)  # noqa: SLF001
-    monkeypatch.setattr(server._risk, "check_order", fake_check_order)  # noqa: SLF001
-    monkeypatch.setattr(server._audit, "log_risk_event", fake_log_risk_event)  # noqa: SLF001
 
     req = Request(
         command="order.place",
@@ -148,8 +134,7 @@ async def test_dispatch_order_place_dry_run_preview(monkeypatch: pytest.MonkeyPa
 
     assert called["place_order"] is False
     assert data["dry_run"] is True
-    assert data["submit_allowed"] is True
-    assert data["order"]["status"].startswith("DryRun")
+    assert data["order"]["status"] == "DryRunPreview"
 
 
 @pytest.mark.asyncio

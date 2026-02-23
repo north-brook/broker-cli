@@ -24,7 +24,6 @@ from broker_sdk.types import (
     OrderSide,
     OrderStatusFilter,
     QuoteIntent,
-    RiskParam,
     TimeInForce,
 )
 
@@ -32,7 +31,7 @@ from broker_sdk.types import (
 class Client:
     """Async broker client over the daemon Unix socket.
 
-    All operations route through `broker-daemon`, so risk checks and audit logging are always enforced.
+    All operations route through `broker-daemon`, so audit logging is always enforced.
     """
 
     def __init__(self, socket_path: str | Path | None = None, timeout_seconds: int | None = None) -> None:
@@ -322,46 +321,6 @@ class Client:
     async def exposure(self, by: ExposureGroupBy = "symbol") -> dict[str, Any]:
         return await self._request("portfolio.exposure", {"by": by})
 
-    async def risk_check(
-        self,
-        *,
-        side: OrderSide,
-        symbol: str,
-        qty: float,
-        limit: float | None = None,
-        stop: float | None = None,
-        tif: TimeInForce = "DAY",
-    ) -> dict[str, Any]:
-        params: dict[str, Any] = {
-            "side": side,
-            "symbol": symbol,
-            "qty": qty,
-            "tif": tif,
-        }
-        if limit is not None:
-            params["limit"] = limit
-        if stop is not None:
-            params["stop"] = stop
-        return await self._request("risk.check", params)
-
-    async def risk_limits(self) -> dict[str, Any]:
-        return await self._request("risk.limits")
-
-    async def risk_set(self, param: RiskParam, value: Any) -> dict[str, Any]:
-        return await self._request("risk.set", {"param": param, "value": value})
-
-    async def risk_halt(self) -> dict[str, Any]:
-        return await self._request("risk.halt")
-
-    async def risk_resume(self) -> dict[str, Any]:
-        return await self._request("risk.resume")
-
-    async def risk_override(self, *, param: RiskParam, value: Any, duration: str, reason: str) -> dict[str, Any]:
-        return await self._request(
-            "risk.override",
-            {"param": param, "value": value, "duration": duration, "reason": reason},
-        )
-
     async def keepalive(self) -> dict[str, Any]:
         return await self._request("runtime.keepalive", {"sent_at": time.time()})
 
@@ -387,12 +346,6 @@ class Client:
         if since:
             params["since"] = since
         return await self._request("audit.orders", params)
-
-    async def audit_risk(self, event_type: str | None = None) -> dict[str, Any]:
-        params: dict[str, Any] = {}
-        if event_type:
-            params["type"] = event_type
-        return await self._request("audit.risk", params)
 
     async def audit_export(
         self,

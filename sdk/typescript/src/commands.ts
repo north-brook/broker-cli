@@ -7,7 +7,6 @@ import type {
   AuditExportResponse,
   AuditTable,
   AuditOrdersResponse,
-  AuditRiskResponse,
   BarSize,
   DaemonStatusResponse,
   DaemonStopResponse,
@@ -34,14 +33,7 @@ import type {
   PortfolioSnapshotResponse,
   QuoteSnapshotResponse,
   QuoteIntent,
-  RiskParam,
-  RiskCheckResult,
-  RiskHaltResponse,
-  RiskLimitsResponse,
-  RiskOverrideResponse,
-  RiskResumeResponse,
-  TimeInForce,
-  RiskSetResponse
+  TimeInForce
 } from "./sdk-types.js";
 
 export interface CommandSpec<Params, Result> {
@@ -117,34 +109,9 @@ export interface CommandMap {
   "order.cancel": CommandSpec<{ order_id: string }, OrderCancelResponse>;
   "orders.cancel_all": CommandSpec<{ confirm?: boolean; json_mode?: boolean }, OrdersCancelAllResponse>;
   "fills.list": CommandSpec<{ since?: string; symbol?: string }, FillsListResponse>;
-  "risk.check": CommandSpec<
-    {
-      side: OrderSide;
-      symbol: string;
-      qty: number;
-      tif?: TimeInForce;
-      limit?: number;
-      stop?: number;
-    },
-    RiskCheckResult
-  >;
-  "risk.limits": CommandSpec<Record<string, never>, RiskLimitsResponse>;
-  "risk.set": CommandSpec<{ param: RiskParam; value: JsonValue }, RiskSetResponse>;
-  "risk.halt": CommandSpec<Record<string, never>, RiskHaltResponse>;
-  "risk.resume": CommandSpec<Record<string, never>, RiskResumeResponse>;
-  "risk.override": CommandSpec<
-    {
-      param: RiskParam;
-      value: JsonValue;
-      duration: string;
-      reason: string;
-    },
-    RiskOverrideResponse
-  >;
   "runtime.keepalive": CommandSpec<{ sent_at?: number }, KeepaliveResponse>;
   "audit.commands": CommandSpec<{ source?: AuditSource; since?: string; request_id?: string }, AuditCommandsResponse>;
   "audit.orders": CommandSpec<{ status?: OrderStatusFilter; since?: string }, AuditOrdersResponse>;
-  "audit.risk": CommandSpec<{ type?: string }, AuditRiskResponse>;
   "audit.export": CommandSpec<
     {
       output: string;

@@ -49,14 +49,6 @@ SCHEMA_STATEMENTS = [
     )
     """,
     """
-    CREATE TABLE IF NOT EXISTS risk_events (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        timestamp TEXT NOT NULL,
-        event_type TEXT NOT NULL,
-        details TEXT
-    )
-    """,
-    """
     CREATE TABLE IF NOT EXISTS connection_events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         timestamp TEXT NOT NULL,

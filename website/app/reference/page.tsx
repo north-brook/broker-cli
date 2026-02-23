@@ -104,7 +104,6 @@ const sections = [
   { id: "market", label: "Market Data" },
   { id: "orders", label: "Orders" },
   { id: "portfolio", label: "Portfolio" },
-  { id: "risk", label: "Risk" },
   { id: "audit", label: "Audit" },
   { id: "config", label: "Configuration" },
 ];
@@ -209,9 +208,9 @@ export default function ReferencePage() {
           />
           <Cmd
             name="broker daemon status"
-            description="Show daemon uptime, broker connection state, and risk halt status."
+            description="Show daemon uptime and broker connection state."
             usage="broker daemon status"
-            example={`$ broker daemon status\n{"ok":true,"data":{"uptime_seconds":3421.4,"connection":{"connected":true,"account_id":"..."},"risk_halted":false,"socket":"~/.local/state/broker/broker.sock"},"error":null,"meta":{"schema_version":"v1","command":"daemon.status","request_id":"...","timestamp":"..."}}`}
+            example={`$ broker daemon status\n{"ok":true,"data":{"uptime_seconds":3421.4,"connection":{"connected":true,"account_id":"..."},"socket":"~/.local/state/broker/broker.sock"},"error":null,"meta":{"schema_version":"v1","command":"daemon.status","request_id":"...","timestamp":"..."}}`}
           />
           <Cmd
             name="broker daemon restart"
@@ -291,10 +290,10 @@ export default function ReferencePage() {
               { flag: "--limit PRICE", description: "Limit price (creates limit order)" },
               { flag: "--stop PRICE", description: "Stop trigger price (creates stop order)" },
               { flag: "--tif DAY|GTC|IOC", description: "Time in force", default: "DAY" },
-              { flag: "--dry-run", description: "Evaluate order risk but do not submit" },
+              { flag: "--dry-run", description: "Preview order without submitting" },
               { flag: "--idempotency-key KEY", description: "Stable retry key mapped to client_order_id" },
             ]}
-            example={`$ broker order buy AAPL 100 --limit 185.00 --idempotency-key rebalance-aapl-1\n{"ok":true,"data":{"order":{"client_order_id":"rebalance-aapl-1","status":"Submitted"},"dry_run":false,"risk_check":{"ok":true,"reasons":[]},"submit_allowed":true},"error":null,"meta":{"schema_version":"v1","command":"order.place","request_id":"...","timestamp":"..."}}\n\n$ broker order buy AAPL 10 --limit 185 --dry-run\n{"ok":true,"data":{"order":{"client_order_id":"dryrun-...","status":"DryRunAccepted"},"dry_run":true,"risk_check":{"ok":true,"reasons":[]},"submit_allowed":true},"error":null,"meta":{"schema_version":"v1","command":"order.place","request_id":"...","timestamp":"..."}}`}
+            example={`$ broker order buy AAPL 100 --limit 185.00 --idempotency-key rebalance-aapl-1\n{"ok":true,"data":{"order":{"client_order_id":"rebalance-aapl-1","status":"Submitted"},"dry_run":false,"submit_allowed":true},"error":null,"meta":{"schema_version":"v1","command":"order.place","request_id":"...","timestamp":"..."}}\n\n$ broker order buy AAPL 10 --limit 185 --dry-run\n{"ok":true,"data":{"order":{"client_order_id":"dryrun-...","status":"DryRunAccepted"},"dry_run":true,"submit_allowed":true},"error":null,"meta":{"schema_version":"v1","command":"order.place","request_id":"...","timestamp":"..."}}`}
           />
           <Cmd
             name="broker order sell"
@@ -304,7 +303,7 @@ export default function ReferencePage() {
               { flag: "--limit PRICE", description: "Limit price" },
               { flag: "--stop PRICE", description: "Stop trigger price" },
               { flag: "--tif DAY|GTC|IOC", description: "Time in force", default: "DAY" },
-              { flag: "--dry-run", description: "Evaluate order risk but do not submit" },
+              { flag: "--dry-run", description: "Preview order without submitting" },
               { flag: "--idempotency-key KEY", description: "Stable retry key mapped to client_order_id" },
             ]}
             example={`$ broker order sell AAPL 50 --limit 190.00 --tif GTC`}
@@ -409,71 +408,13 @@ export default function ReferencePage() {
           />
           <Cmd
             name="broker snapshot"
-            description="Single-call state snapshot for agent loops: quotes, positions, balance, pnl, exposure, limits, and connection."
+            description="Single-call state snapshot for agent loops: quotes, positions, balance, pnl, exposure, and connection."
             usage="broker snapshot [OPTIONS]"
             flags={[
               { flag: "--symbols SYMBOLS", description: "Comma-separated symbol list for quote snapshot" },
               { flag: "--exposure-by symbol|sector|asset_class|currency", description: "Exposure grouping", default: "symbol" },
             ]}
-            example={`$ broker snapshot --symbols AAPL,MSFT\n{"ok":true,"data":{"symbols":["AAPL","MSFT"],"quotes":[...],"positions":[...],"balance":{...},"pnl":{...},"exposure":[...],"risk_limits":{...},"connection":{"connected":true}},"error":null,"meta":{"schema_version":"v1","command":"portfolio.snapshot","request_id":"...","timestamp":"..."}}`}
-          />
-        </Section>
-
-        {/* Risk */}
-        <Section
-          id="risk"
-          title="Risk Management"
-          description="Pre-trade risk checks, runtime limits, emergency controls, and temporary overrides."
-        >
-          <Cmd
-            name="broker check"
-            description="Dry-run an order against risk limits without submitting. Use to validate before placing."
-            usage="broker check --side SIDE --symbol SYMBOL --qty QTY [OPTIONS]"
-            flags={[
-              { flag: "--side buy|sell", description: "Order side (required)" },
-              { flag: "--symbol SYMBOL", description: "Ticker symbol (required)" },
-              { flag: "--qty QTY", description: "Quantity to evaluate (required)" },
-              { flag: "--limit PRICE", description: "Limit price" },
-              { flag: "--stop PRICE", description: "Stop trigger price" },
-              { flag: "--tif DAY|GTC|IOC", description: "Time in force", default: "DAY" },
-            ]}
-            example={`$ broker check --side buy --symbol AAPL --qty 500 --limit 185\n{"ok":true,"data":{"ok":true,"reasons":[],"details":{"notional":92500.0}},"error":null,"meta":{"schema_version":"v1","command":"risk.check","request_id":"...","timestamp":"..."}}\n\n$ broker check --side buy --symbol AAPL --qty 50000 --limit 185\n{"ok":true,"data":{"ok":false,"reasons":["order notional ... exceeds max_order_value ..."],"details":{"notional":9250000.0},"suggestion":"reduce quantity to <= ..."},"error":null,"meta":{"schema_version":"v1","command":"risk.check","request_id":"...","timestamp":"..."}}`}
-          />
-          <Cmd
-            name="broker limits"
-            description="Show current runtime risk limit parameters."
-            usage="broker limits"
-            example={`$ broker limits\n{"ok":true,"data":{"max_position_pct":10.0,"max_order_value":50000.0,"max_daily_loss_pct":2.0,"max_open_orders":20,"halted":false},"error":null,"meta":{"schema_version":"v1","command":"risk.limits","request_id":"...","timestamp":"..."}}`}
-          />
-          <Cmd
-            name="broker set"
-            description="Update a risk limit parameter at runtime."
-            usage="broker set PARAM VALUE"
-            example={`$ broker set max_order_value 25000\n{"ok":true,"data":{"max_order_value":25000.0,"halted":false},"error":null,"meta":{"schema_version":"v1","command":"risk.set","request_id":"...","timestamp":"..."}}`}
-          />
-          <Cmd
-            name="broker halt"
-            description="Emergency halt: cancels all open orders and rejects new orders until resumed."
-            usage="broker halt"
-            example={`$ broker halt\n{"ok":true,"data":{"halted":true},"error":null,"meta":{"schema_version":"v1","command":"risk.halt","request_id":"...","timestamp":"..."}}`}
-          />
-          <Cmd
-            name="broker resume"
-            description="Resume normal trading after a risk halt."
-            usage="broker resume"
-            example={`$ broker resume\n{"ok":true,"data":{"halted":false},"error":null,"meta":{"schema_version":"v1","command":"risk.resume","request_id":"...","timestamp":"..."}}`}
-          />
-          <Cmd
-            name="broker override"
-            description="Apply a temporary risk limit override. Requires a reason and duration for audit trail."
-            usage="broker override --param PARAM --value VALUE --reason TEXT --duration DURATION"
-            flags={[
-              { flag: "--param PARAM", description: "Risk parameter to override" },
-              { flag: "--value VALUE", description: "Temporary override value" },
-              { flag: "--reason TEXT", description: "Required explanation for the override" },
-              { flag: "--duration DURATION", description: "How long the override lasts (e.g. 1h, 30m)" },
-            ]}
-            example={`$ broker override --param max_order_value --value 25000 --reason "large rebalance" --duration 1h\n{"ok":true,"data":{"param":"max_order_value","value":25000.0,"reason":"large rebalance","expires_at":"..."},"error":null,"meta":{"schema_version":"v1","command":"risk.override","request_id":"...","timestamp":"..."}}`}
+            example={`$ broker snapshot --symbols AAPL,MSFT\n{"ok":true,"data":{"symbols":["AAPL","MSFT"],"quotes":[...],"positions":[...],"balance":{...},"pnl":{...},"exposure":[...],"connection":{"connected":true}},"error":null,"meta":{"schema_version":"v1","command":"portfolio.snapshot","request_id":"...","timestamp":"..."}}`}
           />
         </Section>
 
@@ -481,7 +422,7 @@ export default function ReferencePage() {
         <Section
           id="audit"
           title="Audit"
-          description="Query order history, command invocations, and risk events. Export to CSV."
+          description="Query order history and command invocations. Export to CSV."
         >
           <Cmd
             name="broker audit orders"
@@ -504,16 +445,11 @@ export default function ReferencePage() {
             example={`$ broker audit commands --request-id 647a8306-...\n{"ok":true,"data":[{"timestamp":"...","source":"cli","command":"order.place","result_code":0,"request_id":"647a8306-..."}],"error":null,"meta":{"schema_version":"v1","command":"audit.commands","request_id":"...","timestamp":"..."}}`}
           />
           <Cmd
-            name="broker audit risk"
-            description="Query risk event audit records (halts, overrides, limit violations)."
-            usage="broker audit risk [OPTIONS]"
-          />
-          <Cmd
             name="broker audit export"
             description="Export audit rows to CSV."
             usage="broker audit export --table TABLE [OPTIONS]"
             flags={[
-              { flag: "--table orders|commands|risk", description: "Which audit table to export" },
+              { flag: "--table orders|commands", description: "Which audit table to export" },
               { flag: "--format csv", description: "Output format", default: "csv" },
               { flag: "--request-id ID", description: "When table=commands, filter export by request_id" },
             ]}

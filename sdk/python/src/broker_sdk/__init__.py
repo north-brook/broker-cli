@@ -24,8 +24,6 @@ from broker_sdk.types import (
     OrderStatusFilter,
     ORDER_SIDES,
     ORDER_STATUS_FILTERS,
-    RiskParam,
-    RISK_PARAMS,
     TimeInForce,
     TIME_IN_FORCE_VALUES,
 )
@@ -54,8 +52,6 @@ __all__ = [
     "CHAIN_FIELDS",
     "ORDER_SIDES",
     "ORDER_STATUS_FILTERS",
-    "RiskParam",
-    "RISK_PARAMS",
     "TimeInForce",
     "TIME_IN_FORCE_VALUES",
 ]
