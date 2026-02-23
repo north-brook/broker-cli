@@ -139,8 +139,7 @@ export default function ReferencePage() {
             Complete reference for every broker-cli command. Every response uses a stable JSON envelope:
             <code className="mx-1 text-[var(--foreground)]">{`{ok,data,error,meta}`}</code>
             with request IDs for tracing and audit correlation.
-            Use global <code className="mx-1 text-[var(--foreground)]">--strict</code> (or command-level strict flags where available)
-            when agents should treat empty market payloads as errors.
+            Use supported flags where available and note command-specific behavior in each section.
           </p>
         </div>
 
@@ -261,7 +260,6 @@ export default function ReferencePage() {
               { flag: "--limit INT", description: "Max entries returned after filtering", default: "200" },
               { flag: "--offset INT", description: "Offset into filtered entries", default: "0" },
               { flag: "--fields LIST", description: "Comma-separated entry fields (e.g. strike,expiry,bid,ask)" },
-              { flag: "--strict / --no-strict", description: "Error if no entries match filters" },
             ]}
             example={`$ broker chain AAPL --type call --strike-range 0.95:1.05 --limit 5 --fields strike,expiry,bid,ask\n{"ok":true,"data":{"symbol":"AAPL","underlying_price":263.3,"entries":[{"strike":252.5,"expiry":"2026-02-20","bid":null,"ask":null}],"pagination":{"total_entries":80,"offset":0,"limit":5,"returned_entries":5},"fields":["strike","expiry","bid","ask"]},"error":null,"meta":{"schema_version":"v1","command":"market.chain","request_id":"...","timestamp":"..."}}`}
           />
@@ -273,7 +271,6 @@ export default function ReferencePage() {
               { flag: "--period 1d|5d|30d|90d|1y", description: "Lookback period" },
               { flag: "--bar 1m|5m|15m|1h|1d", description: "Bar size" },
               { flag: "--rth-only", description: "Restrict to regular trading hours" },
-              { flag: "--strict / --no-strict", description: "Error when no bars are returned" },
             ]}
             example={`$ broker history AAPL --period 5d --bar 1h\n{"ok":true,"data":[{"symbol":"AAPL","time":"2026-02-18T00:00:00","open":265.1,"close":263.29}],"error":null,"meta":{"schema_version":"v1","command":"market.history","request_id":"...","timestamp":"..."}}`}
             notes="Available on Interactive Brokers only."

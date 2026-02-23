@@ -180,20 +180,13 @@ def chain(
         "--fields",
         help="Comma-separated entry fields to include. Defaults to all.",
     ),
-    strict: bool | None = typer.Option(
-        None,
-        "--strict/--no-strict",
-        help="Treat empty chain results as errors.",
-    ),
 ) -> None:
     state = get_state(ctx)
     command = "market.chain"
-    strict_mode = state.strict if strict is None else strict
     params: dict[str, object] = {
         "symbol": symbol,
         "limit": limit,
         "offset": offset,
-        "strict": strict_mode,
     }
     if expiry:
         params["expiry"] = expiry
@@ -212,10 +205,10 @@ def chain(
             json_output=state.json_output,
             command=command,
             request_id=result.request_id,
-            strict=strict_mode,
+            strict=state.strict,
         )
     except BrokerError as exc:
-        handle_error(exc, json_output=state.json_output, command=command, strict=strict_mode)
+        handle_error(exc, json_output=state.json_output, command=command, strict=state.strict)
 
 
 @app.command("history", help="Fetch historical bars for a symbol.")
@@ -225,15 +218,9 @@ def history(
     period: HistoryPeriod = typer.Option(..., "--period", case_sensitive=False, help="1d, 5d, 30d, 90d, 1y"),
     bar: BarSize = typer.Option(..., "--bar", case_sensitive=False, help="1m, 5m, 15m, 1h, 1d"),
     rth_only: bool = typer.Option(False, "--rth-only", help="Restrict to regular trading hours."),
-    strict: bool | None = typer.Option(
-        None,
-        "--strict/--no-strict",
-        help="Treat empty history responses as errors.",
-    ),
 ) -> None:
     state = get_state(ctx)
     command = "market.history"
-    strict_mode = state.strict if strict is None else strict
     try:
         result = run_async(
             daemon_request(
@@ -244,7 +231,6 @@ def history(
                     "period": period.value,
                     "bar": bar.value,
                     "rth_only": rth_only,
-                    "strict": strict_mode,
                 },
             )
         )
@@ -253,10 +239,10 @@ def history(
             json_output=state.json_output,
             command=command,
             request_id=result.request_id,
-            strict=strict_mode,
+            strict=state.strict,
         )
     except BrokerError as exc:
-        handle_error(exc, json_output=state.json_output, command=command, strict=strict_mode)
+        handle_error(exc, json_output=state.json_output, command=command, strict=state.strict)
 
 
 @app.command("capabilities", help="Show detected market-data capabilities for the connected provider.")

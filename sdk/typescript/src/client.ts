@@ -175,14 +175,12 @@ export class Client {
     period: HistoryPeriod,
     bar: BarSize,
     rthOnly = false,
-    strict = false
   ): Promise<MarketHistoryResponse> {
     return this.request("market.history", {
       symbol,
       period,
       bar,
       rth_only: rthOnly,
-      strict
     });
   }
 
@@ -191,7 +189,7 @@ export class Client {
     expiry?: string,
     strikeRange?: string,
     optionType?: OptionType,
-    options: { limit?: number; offset?: number; fields?: ChainField[]; strict?: boolean } = {}
+    options: { limit?: number; offset?: number; fields?: ChainField[] } = {}
   ): Promise<OptionChainResponse> {
     const params: CommandParams<"market.chain"> = { symbol };
     if (expiry) {
@@ -211,9 +209,6 @@ export class Client {
     }
     if (options.fields) {
       params.fields = options.fields;
-    }
-    if (options.strict !== undefined) {
-      params.strict = options.strict;
     }
     return this.request("market.chain", params);
   }

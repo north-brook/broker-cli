@@ -42,14 +42,9 @@ app.command("schema", help="Show machine-readable JSON schema for daemon command
 @app.callback()
 def root(
     ctx: typer.Context,
-    strict: bool = typer.Option(
-        False,
-        "--strict/--no-strict",
-        help="Enable strict mode for commands that can treat empty market payloads as errors.",
-    ),
 ) -> None:
     cfg = load_config()
-    ctx.obj = CLIState(config=cfg, json_output=True, strict=strict)
+    ctx.obj = CLIState(config=cfg, json_output=True, strict=False)
 
 
 def run() -> None:

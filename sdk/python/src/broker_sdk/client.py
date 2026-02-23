@@ -173,12 +173,10 @@ class Client:
         period: HistoryPeriod,
         bar: BarSize,
         rth_only: bool = False,
-        *,
-        strict: bool = False,
     ) -> list[dict[str, Any]]:
         data = await self._request(
             "market.history",
-            {"symbol": symbol, "period": period, "bar": bar, "rth_only": rth_only, "strict": strict},
+            {"symbol": symbol, "period": period, "bar": bar, "rth_only": rth_only},
         )
         return data.get("bars", [])
 
@@ -192,9 +190,8 @@ class Client:
         limit: int = 200,
         offset: int = 0,
         fields: list[ChainField] | None = None,
-        strict: bool = False,
     ) -> dict[str, Any]:
-        params: dict[str, Any] = {"symbol": symbol, "limit": limit, "offset": offset, "strict": strict}
+        params: dict[str, Any] = {"symbol": symbol, "limit": limit, "offset": offset}
         if expiry:
             params["expiry"] = expiry
         if strike_range:

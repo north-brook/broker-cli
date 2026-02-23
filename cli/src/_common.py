@@ -101,8 +101,6 @@ def build_meta(
         "request_id": request_id or str(uuid.uuid4()),
         "timestamp": datetime.now(UTC).isoformat(),
     }
-    if strict is not None:
-        meta["strict"] = strict
     return meta
 
 

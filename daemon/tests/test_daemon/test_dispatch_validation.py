@@ -86,26 +86,6 @@ async def test_dispatch_market_capabilities_returns_payload(tmp_path) -> None:
     assert "cache_age_ms" in data["cache"]
 
 
-@pytest.mark.asyncio
-async def test_dispatch_history_strict_raises_on_empty(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
-    server = DaemonServer(_test_config(tmp_path))
-    server._provider.capabilities["history"] = True  # noqa: SLF001
-
-    async def fake_history(**_: object) -> list[object]:
-        return []
-
-    monkeypatch.setattr(server._provider, "history", fake_history)  # noqa: SLF001
-
-    req = Request(
-        command="market.history",
-        params={"symbol": "INVALID", "period": "5d", "bar": "1d", "strict": True},
-    )
-
-    with pytest.raises(BrokerError) as exc:
-        await server._dispatch(req)  # noqa: SLF001
-
-    assert exc.value.code == ErrorCode.INVALID_SYMBOL
-
 
 @pytest.mark.asyncio
 async def test_dispatch_chain_applies_limit_offset_and_fields(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
