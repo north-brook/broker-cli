@@ -578,11 +578,11 @@ class IBProvider(BrokerProvider):
             ticker = (await self._ib.reqTickersAsync(contract))[0]
             market_price_attr = getattr(ticker, "marketPrice", None)
             if callable(market_price_attr):
-                underlying = _to_float_or_none(market_price_attr())
+                underlying = _to_float_or_none(market_price_attr(), reject_zero=True)
             else:
-                underlying = _to_float_or_none(market_price_attr)
+                underlying = _to_float_or_none(market_price_attr, reject_zero=True)
             if underlying is None:
-                underlying = _to_float_or_none(getattr(ticker, "last", None))
+                underlying = _to_float_or_none(getattr(ticker, "last", None), reject_zero=True)
             chain_rows = await self._ib.reqSecDefOptParamsAsync(symbol.upper(), "", contract.secType, contract.conId)
             if not chain_rows:
                 return OptionChain(symbol=symbol.upper(), underlying_price=underlying, entries=[])
@@ -891,7 +891,7 @@ class IBProvider(BrokerProvider):
             self._raise_mapped_error("fills", exc)
 
 
-def _to_float_or_none(value: Any) -> float | None:
+def _to_float_or_none(value: Any, *, reject_zero: bool = False) -> float | None:
     if value is None:
         return None
     try:
@@ -905,6 +905,10 @@ def _to_float_or_none(value: Any) -> float | None:
         return None
     # IB also uses -1.0 to indicate "no data available" for prices.
     if out == -1.0:
+        return None
+    # IB returns 0.0 for price fields when no data is available (e.g. off-hours).
+    # No exchange-traded instrument has a $0.00 price, so treat as sentinel.
+    if reject_zero and out == 0.0:
         return None
     return out
 
@@ -942,9 +946,9 @@ def _ticker_to_quote(
     contract = getattr(ticker, "contract", None)
     quote = Quote(
         symbol=getattr(contract, "symbol", ""),
-        bid=_to_float_or_none(getattr(ticker, "bid", None)),
-        ask=_to_float_or_none(getattr(ticker, "ask", None)),
-        last=_to_float_or_none(getattr(ticker, "last", None)),
+        bid=_to_float_or_none(getattr(ticker, "bid", None), reject_zero=True),
+        ask=_to_float_or_none(getattr(ticker, "ask", None), reject_zero=True),
+        last=_to_float_or_none(getattr(ticker, "last", None), reject_zero=True),
         volume=_to_float_or_none(getattr(ticker, "volume", None)),
         timestamp=ts,
         exchange=getattr(contract, "exchange", None),

@@ -92,8 +92,9 @@ def quote(
         result = run_async(daemon_request(state, command, params))
         data = result.data
         quotes = data.get("quotes", [])
+        warnings: list[str] = []
         if isinstance(quotes, list):
-            _warn_on_quote_results(
+            warnings = _warn_on_quote_results(
                 quotes,
                 provider=state.config.provider,
                 intent=str(data.get("intent") or state.config.market_data.quote_intent_default),
@@ -105,6 +106,7 @@ def quote(
             command=command,
             request_id=result.request_id,
             strict=state.strict,
+            warnings=warnings or None,
         )
     except BrokerError as exc:
         handle_error(exc, json_output=state.json_output, command=command, strict=state.strict)
@@ -319,43 +321,45 @@ def _warn_on_quote_results(
     provider: str,
     intent: str,
     provider_capabilities: object | None,
-) -> None:
+) -> list[str]:
+    warnings: list[str] = []
+
     symbols = _symbols_with_empty_quotes(quotes)
     if symbols:
         symbol_text = ", ".join(symbols)
         if provider == "ib":
             delayed_supported = _provider_supports(provider_capabilities, "delayed")
-            delayed_text = "Delayed fallback appears unavailable for this session/account." if not delayed_supported else ""
-            typer.echo(
+            delayed_text = " Delayed fallback appears unavailable for this session/account." if not delayed_supported else ""
+            msg = (
                 f"No quote data returned for {symbol_text} (bid/ask/last/volume are null). "
-                "Verify IBKR market-data permissions/subscriptions for the requested symbol. "
-                f"{delayed_text}".strip(),
-                err=True,
+                "Verify IBKR market-data permissions/subscriptions for the requested symbol."
+                f"{delayed_text}"
             )
-            return
-        typer.echo(
-            f"No quote data returned for {symbol_text} (bid/ask/last/volume are null). "
-            "Verify symbol validity and provider market-data permissions.",
-            err=True,
-        )
-        return
+        else:
+            msg = (
+                f"No quote data returned for {symbol_text} (bid/ask/last/volume are null). "
+                "Verify symbol validity and provider market-data permissions."
+            )
+        warnings.append(msg)
+        typer.echo(msg, err=True)
+        return warnings
 
     if intent == QuoteIntent.TOP_OF_BOOK.value:
         partial = _symbols_with_missing_top_of_book(quotes)
         if partial:
-            typer.echo(
-                f"Top-of-book data is incomplete for {', '.join(partial)} (bid and/or ask is null).",
-                err=True,
-            )
-            return
+            msg = f"Top-of-book data is incomplete for {', '.join(partial)} (bid and/or ask is null)."
+            warnings.append(msg)
+            typer.echo(msg, err=True)
+            return warnings
 
     if intent == QuoteIntent.BEST_EFFORT.value:
         last_only_symbols = _symbols_with_last_only(quotes)
         if last_only_symbols and provider == "ib":
-            typer.echo(
-                f"Bid/ask unavailable for {', '.join(last_only_symbols)}; showing last price from available market data.",
-                err=True,
-            )
+            msg = f"Bid/ask unavailable for {', '.join(last_only_symbols)}; showing last price from available market data."
+            warnings.append(msg)
+            typer.echo(msg, err=True)
+
+    return warnings
 
 
 def _symbols_with_missing_top_of_book(quotes: list[dict[str, object]]) -> list[str]:
