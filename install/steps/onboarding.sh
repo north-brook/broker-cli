@@ -451,12 +451,14 @@ initialize_fund_repo_files() {
   local fund_slug="$3"
   local inception_timestamp="$4"
   local initial_capital="$5"
+  local gateway_mode="${6:-}"
 
   BROKER_FUND_DIR="${fund_dir}" \
   BROKER_FUND_NAME="${fund_name}" \
   BROKER_FUND_SLUG="${fund_slug}" \
   BROKER_FUND_INCEPTION="${inception_timestamp}" \
   BROKER_FUND_INITIAL_CAPITAL="${initial_capital}" \
+  BROKER_FUND_GATEWAY_MODE="${gateway_mode}" \
   python3 - <<'PY'
 import json
 import os
@@ -467,6 +469,7 @@ fund_name = os.environ["BROKER_FUND_NAME"]
 fund_slug = os.environ["BROKER_FUND_SLUG"]
 inception = os.environ["BROKER_FUND_INCEPTION"]
 initial_capital = float(os.environ["BROKER_FUND_INITIAL_CAPITAL"])
+gateway_mode = os.environ.get("BROKER_FUND_GATEWAY_MODE", "").strip().lower()
 
 fund_dir.mkdir(parents=True, exist_ok=True)
 (fund_dir / "decisions").mkdir(parents=True, exist_ok=True)
@@ -483,6 +486,9 @@ config = {
         "source": "inferred_from_broker_cash_balance"
     },
 }
+
+if gateway_mode == "paper":
+    config["paper"] = True
 
 (fund_dir / "config.json").write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
 (fund_dir / "fills.json").write_text("[]\n", encoding="utf-8")
@@ -596,7 +602,10 @@ configure_fund_repository() {
   local inception_timestamp=""
   inception_timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
-  initialize_fund_repo_files "${fund_dir}" "${fund_name}" "${fund_slug}" "${inception_timestamp}" "${initial_capital}"
+  local gateway_mode=""
+  gateway_mode="$(read_broker_config_value "ibkrGatewayMode" | tr '[:upper:]' '[:lower:]' || true)"
+
+  initialize_fund_repo_files "${fund_dir}" "${fund_name}" "${fund_slug}" "${inception_timestamp}" "${initial_capital}" "${gateway_mode}"
   initialize_fund_repo_git "${fund_dir}" "${origin_git}"
 
   tty_printf "%b✔%b %s\n" "${GREEN}" "${RESET}" "Initialized fund repository at ${fund_dir}"
