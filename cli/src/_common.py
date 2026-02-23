@@ -274,6 +274,5 @@ def _default_suggestion(code: ErrorCode) -> str | None:
         ErrorCode.IB_DISCONNECTED: "Verify IB Gateway/TWS is running and the gateway host/port are correct.",
         ErrorCode.INVALID_ARGS: "Run `broker --help` or `<command> --help` for valid usage.",
         ErrorCode.TIMEOUT: "Retry the command or increase `runtime.request_timeout_seconds` in config.",
-        ErrorCode.RISK_HALTED: "Review `broker limits`, then run `broker resume` when appropriate.",
     }
     return suggestions.get(code)

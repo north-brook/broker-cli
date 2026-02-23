@@ -17,7 +17,6 @@ broker positions
 broker order buy AAPL 5 --limit 180 --tif DAY --idempotency-key strat-42-aapl
 broker order buy AAPL 5 --limit 180 --dry-run
 broker chain AAPL --type call --strike-range 0.95:1.05 --limit 100 --fields strike,expiry,bid,ask
-broker limits
 broker audit commands --request-id <request_id>
 broker schema quote.snapshot
 ```

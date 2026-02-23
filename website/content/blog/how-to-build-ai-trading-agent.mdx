@@ -18,7 +18,7 @@ This guide walks you through building an autonomous trading agent from scratch u
 
 A trading agent that can:
 - Monitor your portfolio in real-time
-- Analyze exposure and risk
+- Analyze exposure
 - Rebalance positions based on rules you define
 - Screen options contracts
 - Execute trades autonomously
@@ -93,9 +93,6 @@ broker quote AAPL
 
 # Look at option chains
 broker chain AAPL --type call --expiry 2026-03 --limit 50 --fields strike,expiry,bid,ask,delta
-
-# Dry-run a rebalance order
-broker check --side sell --symbol AAPL --qty 10 --limit 190
 ```
 
 Every command already returns machine-readable JSON in a stable envelope:
@@ -114,8 +111,7 @@ The agent reads it once, then knows how to:
 - Analyze exposure by symbol, sector, or asset class
 - Place any order type (market, limit, stop, bracket)
 - Screen option chains with greeks
-- Manage risk limits
-- Cancel orders and halt trading
+- Cancel orders
 
 No integration code. No API wrappers. No boilerplate.
 
@@ -131,7 +127,7 @@ The agent reads SKILL.md, discovers `broker snapshot`, runs it, and summarizes t
 
 ## Step 7: Portfolio monitoring
 
-Now make it useful. Ask your agent to analyze risk:
+Now make it useful. Ask your agent to analyze exposure:
 
 ```bash
 codex "Check my portfolio exposure by symbol. Flag any position that exceeds 30% of net liquidation value."
@@ -177,20 +173,7 @@ codex "Buy 1 contract of the AAPL put with the tightest spread from that list."
 
 Giving an agent access to real money requires safety guardrails:
 
-**Start with paper trading.** Always. `broker daemon start --paper` gives you the full experience with zero risk. Develop and test your strategies here before going live.
-
-**Use risk limits.** broker-cli has built-in risk management:
-
-```bash
-# Check if an order would violate risk limits
-broker check --side buy --symbol AAPL --qty 500 --limit 185
-
-# Set exposure limits
-broker set max_position_pct 25
-
-# Emergency stop — cancel everything
-broker halt
-```
+**Start with paper trading.** Always. `broker daemon start --paper` gives you the full experience with simulated funds. Develop and test your strategies here before going live.
 
 **Read-only first.** Start your agent with read-only commands (portfolio, exposure, quotes) before enabling order placement. Watch how it reasons about your portfolio before trusting it to act.
 

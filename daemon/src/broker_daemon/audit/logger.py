@@ -107,16 +107,15 @@ class AuditLogger:
             INSERT INTO orders (
                 client_order_id, ib_order_id, symbol, side, qty, order_type, limit_price,
                 stop_price, tif, status, submitted_at, filled_at, fill_price, fill_qty,
-                commission, risk_check_result
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                commission
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(client_order_id) DO UPDATE SET
                 ib_order_id = excluded.ib_order_id,
                 status = excluded.status,
                 filled_at = excluded.filled_at,
                 fill_price = excluded.fill_price,
                 fill_qty = excluded.fill_qty,
-                commission = excluded.commission,
-                risk_check_result = excluded.risk_check_result
+                commission = excluded.commission
             """,
             (
                 record.client_order_id,
@@ -134,7 +133,6 @@ class AuditLogger:
                 record.fill_price,
                 record.fill_qty,
                 record.commission,
-                json.dumps(record.risk_check_result, sort_keys=True),
             ),
         )
 
@@ -155,12 +153,6 @@ class AuditLogger:
                 fill.commission,
                 fill.timestamp.isoformat(),
             ),
-        )
-
-    async def log_risk_event(self, event_type: str, details: dict[str, Any]) -> None:
-        await self._execute(
-            "INSERT INTO risk_events (timestamp, event_type, details) VALUES (?, ?, ?)",
-            (datetime.now(UTC).isoformat(), event_type, json.dumps(details, sort_keys=True)),
         )
 
     async def log_connection_event(self, event: str, details: dict[str, Any]) -> None:

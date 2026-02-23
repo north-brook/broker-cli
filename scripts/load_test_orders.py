@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Burst load test harness for broker-daemon order/risk endpoints."""
+"""Burst load test harness for broker-daemon order endpoints."""
 
 from __future__ import annotations
 
@@ -35,13 +35,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--concurrency", type=int, default=20, help="Concurrent in-flight requests")
     parser.add_argument("--symbol", type=str, default="AAPL", help="Ticker symbol")
     parser.add_argument("--qty", type=float, default=1.0, help="Base quantity")
-    parser.add_argument("--limit", type=float, default=100.0, help="Limit price for order/risk-check payload")
-    parser.add_argument(
-        "--mode",
-        choices=["risk-check", "order"],
-        default="risk-check",
-        help="risk-check is safer; order submits real/paper orders through daemon",
-    )
+    parser.add_argument("--limit", type=float, default=100.0, help="Limit price for order payload")
     parser.add_argument("--json", action="store_true", help="Emit summary as JSON")
     return parser.parse_args()
 
@@ -49,23 +43,14 @@ def _parse_args() -> argparse.Namespace:
 async def _run_once(client: Client, args: argparse.Namespace, index: int) -> RunResult:
     started = time.perf_counter()
     try:
-        if args.mode == "risk-check":
-            await client.risk_check(
-                side="buy",
-                symbol=args.symbol,
-                qty=args.qty + (index % 3) * 0.01,
-                limit=args.limit,
-                tif="DAY",
-            )
-        else:
-            await client.order(
-                side="buy",
-                symbol=args.symbol,
-                qty=args.qty + (index % 3) * 0.01,
-                limit=args.limit,
-                tif="DAY",
-                client_order_id=f"load-test-{index}",
-            )
+        await client.order(
+            side="buy",
+            symbol=args.symbol,
+            qty=args.qty + (index % 3) * 0.01,
+            limit=args.limit,
+            tif="DAY",
+            client_order_id=f"load-test-{index}",
+        )
         return RunResult(ok=True, latency_ms=(time.perf_counter() - started) * 1000.0)
     except BrokerError as exc:
         return RunResult(
@@ -99,7 +84,6 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
         error_counts[code] = error_counts.get(code, 0) + 1
 
     return {
-        "mode": args.mode,
         "count": args.count,
         "concurrency": args.concurrency,
         "success": len(successes),
@@ -133,7 +117,7 @@ def main() -> None:
         print(json.dumps(summary, separators=(",", ":")))
         return
 
-    print(f"mode={summary['mode']} count={summary['count']} concurrency={summary['concurrency']}")
+    print(f"count={summary['count']} concurrency={summary['concurrency']}")
     print(f"success={summary['success']} failed={summary['failed']} throughput_rps={summary['throughput_rps']}")
     print(
         "latency_ms "

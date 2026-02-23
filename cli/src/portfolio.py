@@ -121,7 +121,7 @@ def exposure(
         handle_error(exc, json_output=state.json_output, command=command, strict=state.strict)
 
 
-@app.command("snapshot", help="Fetch quote/portfolio/risk state in one request.")
+@app.command("snapshot", help="Fetch quote and portfolio state in one request.")
 def snapshot(
     ctx: typer.Context,
     symbols: str | None = typer.Option(

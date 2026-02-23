@@ -14,7 +14,6 @@ export {
   QUOTE_INTENTS,
   ORDER_SIDES,
   ORDER_STATUS_FILTERS,
-  RISK_PARAMS,
   TIME_IN_FORCE_VALUES
 } from "./sdk-types.js";
 
@@ -38,7 +37,6 @@ export type {
   OutputConfig,
   RequestEnvelope,
   ResponseEnvelope,
-  RiskConfig,
   RuntimeConfig
 } from "./types.js";
 
@@ -52,8 +50,6 @@ export type {
   AuditExportResponse,
   AuditOrdersResponse,
   AuditOrdersRow,
-  AuditRiskResponse,
-  AuditRiskRow,
   Balance,
   BarSize,
   Bar,
@@ -97,15 +93,5 @@ export type {
   Quote,
   QuoteSnapshotResponse,
   MarketCapabilitiesResponse,
-  RiskParam,
-  RiskCheckInput,
-  RiskCheckResult,
-  RiskConfigSnapshot,
-  RiskHaltResponse,
-  RiskLimitsResponse,
-  RiskOverride,
-  RiskOverrideResponse,
-  RiskResumeResponse,
-  RiskSetResponse,
   TimeInForce
 } from "./sdk-types.js";

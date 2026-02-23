@@ -21,7 +21,6 @@ class AuditSource(str, Enum):
 class AuditTable(str, Enum):
     ORDERS = "orders"
     COMMANDS = "commands"
-    RISK = "risk"
 
 
 class ExportFormat(str, Enum):
@@ -92,30 +91,6 @@ def commands(
         handle_error(exc, json_output=state.json_output, command=command, strict=state.strict)
 
 
-@app.command("risk", help="Query risk event audit records.")
-def risk(
-    ctx: typer.Context,
-    event_type: str | None = typer.Option(None, "--type"),
-) -> None:
-    state = get_state(ctx)
-    command = "audit.risk"
-    params: dict[str, object] = {}
-    if event_type:
-        params["type"] = event_type
-
-    try:
-        result = run_async(daemon_request(state, command, params))
-        print_output(
-            result.data.get("risk_events", []),
-            json_output=state.json_output,
-            command=command,
-            request_id=result.request_id,
-            strict=state.strict,
-        )
-    except BrokerError as exc:
-        handle_error(exc, json_output=state.json_output, command=command, strict=state.strict)
-
-
 @app.command("export", help="Export audit rows to CSV.")
 def export(
     ctx: typer.Context,
@@ -126,7 +101,6 @@ def export(
     status: OrderStatusFilter | None = typer.Option(None, "--status", case_sensitive=False, help="Order status filter."),
     source: AuditSource | None = typer.Option(None, "--source", case_sensitive=False),
     request_id: str | None = typer.Option(None, "--request-id", help="Command-audit filter by request_id."),
-    event_type: str | None = typer.Option(None, "--type", help="Risk event type filter."),
 ) -> None:
     state = get_state(ctx)
     command = "audit.export"
@@ -139,8 +113,6 @@ def export(
         params["source"] = source.value
     if request_id:
         params["request_id"] = request_id
-    if event_type:
-        params["type"] = event_type
 
     try:
         result = run_async(daemon_request(state, command, params))

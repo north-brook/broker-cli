@@ -46,7 +46,6 @@ broker order buy AAPL 100 --limit 185 \
 - **Autonomous Execution** — Persistent auth keeps sessions alive 24/7. No manual logins, no token expiry interruptions.
 - **Multi-Broker** — Unified commands across E\*Trade and Interactive Brokers. One skill file, one interface.
 - **Full Options Support** — Option chains with greeks, expiry filtering, and strike ranges.
-- **Risk Guardrails** — Exposure analysis, cancel-all for instant flattening, paper trading mode. Power with built-in safety valves.
 
 ## Supported Brokers
 
@@ -88,11 +87,6 @@ broker positions                 Current positions
 broker pnl                       P&L summary
 broker balance                   Account balances and margin
 broker exposure --by symbol      Exposure breakdown
-broker risk check                Pre-trade risk validation
-broker risk limits               Current risk limits
-broker risk set PARAM VALUE      Update a risk limit
-broker risk halt                 Emergency halt
-broker risk resume               Resume after halt
 broker audit orders              Order audit trail
 broker audit commands            Command audit trail
 ```

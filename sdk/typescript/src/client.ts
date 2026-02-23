@@ -24,7 +24,6 @@ import type {
   AuditCommandsResponse,
   AuditExportResponse,
   AuditOrdersResponse,
-  AuditRiskResponse,
   BarSize,
   BracketInput,
   DaemonStatusResponse,
@@ -51,15 +50,7 @@ import type {
   PortfolioPositionsResponse,
   PortfolioSnapshotResponse,
   QuoteIntent,
-  QuoteSnapshotResponse,
-  RiskCheckInput,
-  RiskCheckResult,
-  RiskHaltResponse,
-  RiskLimitsResponse,
-  RiskParam,
-  RiskOverrideResponse,
-  RiskResumeResponse,
-  RiskSetResponse
+  QuoteSnapshotResponse
 } from "./sdk-types.js";
 
 export interface ClientOptions {
@@ -329,52 +320,6 @@ export class Client {
     return this.request("fills.list", params);
   }
 
-  async riskCheck(input: RiskCheckInput): Promise<RiskCheckResult> {
-    const params: CommandParams<"risk.check"> = {
-      side: input.side,
-      symbol: input.symbol,
-      qty: input.qty,
-      tif: input.tif ?? "DAY"
-    };
-    if (input.limit !== undefined) {
-      params.limit = input.limit;
-    }
-    if (input.stop !== undefined) {
-      params.stop = input.stop;
-    }
-    return this.request("risk.check", params);
-  }
-
-  async riskLimits(): Promise<RiskLimitsResponse> {
-    return this.request("risk.limits", {});
-  }
-
-  async riskSet(param: RiskParam, value: JsonValue): Promise<RiskSetResponse> {
-    return this.request("risk.set", { param, value });
-  }
-
-  async riskHalt(): Promise<RiskHaltResponse> {
-    return this.request("risk.halt", {});
-  }
-
-  async riskResume(): Promise<RiskResumeResponse> {
-    return this.request("risk.resume", {});
-  }
-
-  async riskOverride(input: {
-    param: RiskParam;
-    value: JsonValue;
-    duration: string;
-    reason: string;
-  }): Promise<RiskOverrideResponse> {
-    return this.request("risk.override", {
-      param: input.param,
-      value: input.value,
-      duration: input.duration,
-      reason: input.reason
-    });
-  }
-
   async keepalive(sentAt?: number): Promise<KeepaliveResponse> {
     return this.request("runtime.keepalive", {
       sent_at: sentAt ?? Date.now() / 1000
@@ -404,14 +349,6 @@ export class Client {
       params.since = since;
     }
     return this.request("audit.orders", params);
-  }
-
-  async auditRisk(type?: string): Promise<AuditRiskResponse> {
-    const params: CommandParams<"audit.risk"> = {};
-    if (type) {
-      params.type = type;
-    }
-    return this.request("audit.risk", params);
   }
 
   async auditExport(input: {

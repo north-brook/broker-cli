@@ -751,7 +751,6 @@ if [[ -n "${STATUS_JSON}" ]]; then
     echo "IB is not reachable on localhost:${PORT}."
     echo "Start IB Gateway and enable API socket access, or pass --gateway HOST:PORT."
     echo "Common Gateway ports: paper/live = 4002/4001."
-    echo "If risk_halted=true after reconnect, run: ${BROKER_BIN} resume"
   fi
 else
   "${BROKER_BIN}" daemon status

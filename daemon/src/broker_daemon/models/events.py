@@ -14,7 +14,6 @@ class EventTopic(str, Enum):
     FILLS = "fills"
     POSITIONS = "positions"
     PNL = "pnl"
-    RISK = "risk"
     CONNECTION = "connection"
 
 

@@ -19,7 +19,7 @@ Install broker-cli, and your agent gets a full trading interface through the ter
 ```bash
 broker quote AAPL MSFT          # Get quotes
 broker snapshot --symbols AAPL,MSFT
-broker exposure --by symbol     # Analyze risk
+broker exposure --by symbol     # Analyze exposure
 broker order buy AAPL 100 --dry-run --idempotency-key aapl-100
 broker chain AAPL --type call --limit 50 --fields strike,expiry,bid,ask
 broker cancel --all             # Cancel everything
@@ -58,10 +58,8 @@ broker-cli currently supports **Interactive Brokers** and **E\*Trade**, with a u
 
 We built broker-cli with guardrails:
 
-- **Paper trading mode** — `broker daemon start --paper` for risk-free testing
-- **Pre-trade risk checks** — `broker check` validates orders before submission
+- **Paper trading mode** — `broker daemon start --paper` for safe testing
 - **Exposure analysis** — real-time breakdown by symbol, sector, or asset class
-- **Emergency halt** — `broker halt` cancels everything and blocks new orders
 - **Cancel all** — instant position flattening when needed
 
 ## Get started

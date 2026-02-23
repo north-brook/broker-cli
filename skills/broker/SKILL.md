@@ -45,23 +45,6 @@ Every order submission (`buy`, `sell`, `bracket`) requires three decision flags.
 
 These are stored in the fund observability repo as decision records. Write substantive reasoning — it becomes the audit trail for every trade.
 
-## Risk Limit Defaults
-
-These are the default risk limits. Query live values with `broker limits`.
-
-| Parameter | Default | Description |
-|---|---|---|
-| `max_position_pct` | 10.0 | Max % of NLV in one position |
-| `max_order_value` | 50000 | Max dollar value per order |
-| `max_daily_loss_pct` | 2.0 | Max daily loss as % of NLV |
-| `max_sector_exposure_pct` | 30.0 | Max % exposure to one sector |
-| `max_single_name_pct` | 10.0 | Max % of NLV in a single name |
-| `max_open_orders` | 20 | Max simultaneous open orders |
-| `order_rate_limit` | 10 | Max orders per minute |
-| `duplicate_window_seconds` | 60 | Window for duplicate order detection |
-| `symbol_allowlist` | _(empty = all allowed)_ | Only these symbols are tradeable |
-| `symbol_blocklist` | _(empty = none blocked)_ | These symbols are blocked |
-
 ## Workflows
 
 ### Research a trade
@@ -71,13 +54,12 @@ broker quote AAPL
 broker history AAPL --period 30d --bar 1d
 broker chain AAPL --expiry 2026-03 --type call
 broker snapshot --symbols AAPL
-broker check --side buy --symbol AAPL --qty 50 --limit 180
 ```
 
 ### Dry-run then place an order
 
 ```bash
-# Test against risk limits without submitting
+# Preview the order without submitting
 broker order buy AAPL 50 --limit 180 --dry-run \
   --decision-name "AAPL Accumulation" \
   --decision-summary "Adding to AAPL on pullback to 180 support" \
@@ -115,16 +97,6 @@ broker positions
 broker balance
 broker exposure --by sector
 broker pnl --today
-```
-
-### Risk management
-
-```bash
-broker limits                           # view current limits
-broker set max_order_value 25000        # tighten a limit
-broker override --param max_order_value --value 75000 --duration 1h --reason "large block trade"
-broker halt                             # emergency: cancel all + reject new orders
-broker resume                           # re-enable trading after halt
 ```
 
 ---
@@ -212,7 +184,7 @@ broker order buy SYMBOL QTY [--limit PRICE] [--stop PRICE] [--tif DAY|GTC|IOC] \
 
 - `QTY`: must be > 0 (supports fractional)
 - `--tif`: default `DAY`
-- `--dry-run`: evaluate against risk only, do not submit
+- `--dry-run`: preview the order without submitting
 - `--idempotency-key`: stable key for safe retries (maps to `client_order_id`)
 - Decision flags are **required** for submitted orders (not required for `--dry-run`)
 
@@ -323,66 +295,6 @@ broker exposure [--by symbol|sector|asset_class|currency]
 
 ---
 
-### Risk
-
-#### `broker check`
-
-Dry-run an order against risk limits (no submission).
-
-```bash
-broker check --side buy|sell --symbol SYMBOL --qty QTY [--limit PRICE] [--stop PRICE] [--tif DAY|GTC|IOC]
-```
-
-- `--side`, `--symbol`, `--qty` are required
-- `--tif`: default `DAY`
-
-#### `broker limits`
-
-Show current runtime risk limits.
-
-```bash
-broker limits
-```
-
-#### `broker set`
-
-Set a risk parameter at runtime.
-
-```bash
-broker set PARAM VALUE
-```
-
-Valid params: `max_position_pct`, `max_order_value`, `max_daily_loss_pct`, `max_sector_exposure_pct`, `max_single_name_pct`, `max_open_orders`, `order_rate_limit`, `duplicate_window_seconds`, `symbol_allowlist`, `symbol_blocklist`
-
-#### `broker halt`
-
-Emergency halt — cancels all open orders and rejects new orders.
-
-```bash
-broker halt
-```
-
-#### `broker resume`
-
-Resume trading after halt.
-
-```bash
-broker resume
-```
-
-#### `broker override`
-
-Temporary risk override with required reason and duration.
-
-```bash
-broker override --param PARAM --value VALUE --duration DURATION --reason TEXT
-```
-
-- All flags required.
-- `--duration`: `30m`, `1h`, `1d` (or raw seconds)
-
----
-
 ### Audit
 
 #### `broker audit orders`
@@ -397,17 +309,11 @@ broker audit orders [--since YYYY-MM-DD] [--status active|filled|cancelled|all]
 broker audit commands [--source cli|sdk|ts_sdk] [--since YYYY-MM-DD] [--request-id ID]
 ```
 
-#### `broker audit risk`
-
-```bash
-broker audit risk [--type EVENT_TYPE]
-```
-
 #### `broker audit export`
 
 ```bash
-broker audit export --output PATH [--format csv] [--table orders|commands|risk] \
-  [--since YYYY-MM-DD] [--status STATUS] [--source SOURCE] [--request-id ID] [--type EVENT_TYPE]
+broker audit export --output PATH [--format csv] [--table orders|commands] \
+  [--since YYYY-MM-DD] [--status STATUS] [--source SOURCE] [--request-id ID]
 ```
 
 - `--output`: required
@@ -438,10 +344,6 @@ broker schema [COMMAND]
 | `DAEMON_NOT_RUNNING` | 3 | Run `broker daemon start` |
 | `IB_DISCONNECTED` | 4 | Verify IB Gateway/TWS is running, wait and retry |
 | `IB_REJECTED` | 1 | Check order params (symbol, qty, price) |
-| `RISK_CHECK_FAILED` | 5 | Check `broker limits`, adjust order size/price or use `broker override` |
-| `RISK_HALTED` | 6 | Trading is halted — review situation, then `broker resume` |
-| `RATE_LIMITED` | 1 | Wait and retry (default: 10 orders/min) |
-| `DUPLICATE_ORDER` | 1 | Identical order within duplicate window — wait or use different `--idempotency-key` |
 | `INVALID_SYMBOL` | 1 | Check symbol with `broker quote` |
 | `INVALID_ARGS` | 2 | Check command syntax with `-h` |
 | `TIMEOUT` | 10 | Retry the command |

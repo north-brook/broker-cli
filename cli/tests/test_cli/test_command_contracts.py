@@ -11,7 +11,6 @@ import daemon
 import market
 import orders
 import portfolio
-import risk
 import schema_cmd
 from main import app
 
@@ -81,21 +80,14 @@ def rpc(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, dict[str, Any]]]:
             "order.cancel": {"ok": True},
             "orders.cancel_all": {"cancelled": 0},
             "fills.list": {"fills": []},
-            "risk.check": {"ok": True},
-            "risk.limits": {"limits": {"max_order_value": 50000}},
-            "risk.set": {"limits": {"max_order_value": 1000}},
-            "risk.halt": {"halted": True},
-            "risk.resume": {"halted": False},
-            "risk.override": {"override": {"param": "max_order_value", "value": 1000}},
             "audit.commands": {"commands": []},
             "audit.orders": {"orders": []},
-            "audit.risk": {"risk_events": []},
             "audit.export": {"output": "/tmp/audit.csv", "rows": 0},
             "schema.get": {"schema_version": "v1", "commands": {}},
         }
         return FakeRPCResult(command, responses.get(command, {"ok": True}))
 
-    for mod in (audit, daemon, market, orders, portfolio, risk, schema_cmd):
+    for mod in (audit, daemon, market, orders, portfolio, schema_cmd):
         monkeypatch.setattr(mod, "daemon_request", fake_daemon_request)
 
     return calls
@@ -122,12 +114,6 @@ def test_root_command_surface_contract(runner: CliRunner) -> None:
         "pnl",
         "balance",
         "exposure",
-        "check",
-        "limits",
-        "set",
-        "halt",
-        "resume",
-        "override",
         "snapshot",
         "audit",
         "schema",
@@ -139,7 +125,7 @@ def test_root_command_surface_contract(runner: CliRunner) -> None:
     [
         (["daemon", "--help"], {"start", "stop", "status", "restart"}),
         (["order", "--help"], {"buy", "sell", "bracket", "status"}),
-        (["audit", "--help"], {"orders", "commands", "risk", "export"}),
+        (["audit", "--help"], {"orders", "commands", "export"}),
     ],
 )
 def test_subcommand_surface_contract(
@@ -220,15 +206,8 @@ def test_subcommand_surface_contract(
         (["balance"], "portfolio.balance"),
         (["exposure"], "portfolio.exposure"),
         (["snapshot"], "portfolio.snapshot"),
-        (["check", "--side", "buy", "--symbol", "AAPL", "--qty", "1"], "risk.check"),
-        (["limits"], "risk.limits"),
-        (["set", "max_order_value", "1000"], "risk.set"),
-        (["halt"], "risk.halt"),
-        (["resume"], "risk.resume"),
-        (["override", "--param", "max_order_value", "--value", "1000", "--duration", "1h", "--reason", "test"], "risk.override"),
         (["audit", "orders"], "audit.orders"),
         (["audit", "commands"], "audit.commands"),
-        (["audit", "risk"], "audit.risk"),
         (["audit", "export", "--output", "/tmp/audit.csv"], "audit.export"),
         (["schema"], "schema.get"),
         (["daemon", "status"], "daemon.status"),
