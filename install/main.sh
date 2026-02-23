@@ -57,7 +57,7 @@ fi
 # Install-only shared steps (provider-specific dependencies are installed in setup.sh)
 # 1. Prepare dirs  2. Bootstrap tooling  3. Create config
 # 4. Python runtime  5. Python packages  6. Link CLI  7. Completions
-STEP_TOTAL=8
+STEP_TOTAL=7
 
 # ─── Install ─────────────────────────────────────────────────────────────────
 
@@ -68,7 +68,6 @@ run_step "Creating broker config (${BROKER_CONFIG_JSON})" ensure_broker_config
 run_step "Creating Python runtime" create_python_runtime
 run_step "Installing broker Python packages" install_python_packages
 run_step "Linking broker CLI command" bind_broker_command
-run_step "Installing skill files" install_skill_files
 run_step "Installing shell completions" install_shell_completions
 
 # ─── Done ─────────────────────────────────────────────────────────────────────
