@@ -84,6 +84,7 @@ print_summary() {
 ${BOLD}${GREEN}Broker Install Complete (E*Trade)${RESET}
 
 Config: ${BROKER_CONFIG_JSON}
+Skill file: ${BROKER_CONFIG_HOME}/skills/broker/SKILL.md
 Tokens: ${BROKER_CONFIG_HOME}/etrade-tokens.json
 Fund repo: ${fund_dir:-"(not configured)"}
 
@@ -100,6 +101,7 @@ SUMMARY
 ${BOLD}${GREEN}Broker Install Complete${RESET}
 
 Config: ${BROKER_CONFIG_JSON}
+Skill file: ${BROKER_CONFIG_HOME}/skills/broker/SKILL.md
 Runtime state: ${BROKER_STATE_HOME}
 Runtime data: ${BROKER_DATA_HOME}
 Fund repo: ${fund_dir:-"(not configured)"}
