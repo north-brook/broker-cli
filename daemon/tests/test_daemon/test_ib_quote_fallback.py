@@ -9,6 +9,8 @@ import pytest
 from broker_daemon.config import GatewayConfig
 from broker_daemon.providers.ib import IBProvider
 
+_UNSET = object()  # sentinel for default bid/ask in _FakeTicker
+
 
 class _FakeEvent:
     def __init__(self) -> None:
@@ -27,10 +29,10 @@ class _FakeContract:
 
 
 class _FakeTicker:
-    def __init__(self, contract: _FakeContract, last: float | None) -> None:
+    def __init__(self, contract: _FakeContract, last: float | None, *, bid: float | None = _UNSET, ask: float | None = _UNSET) -> None:
         self.contract = contract
-        self.bid = None if last is None else last - 0.01
-        self.ask = None if last is None else last + 0.01
+        self.bid = (None if last is None else last - 0.01) if bid is _UNSET else bid
+        self.ask = (None if last is None else last + 0.01) if ask is _UNSET else ask
         self.last = last
         self.volume = None if last is None else 1000.0
         self.time = datetime.now(UTC)
@@ -195,3 +197,7 @@ def test_to_float_or_none_rejects_nan_and_ib_unset_sentinel() -> None:
 
     assert _to_float_or_none(float("nan")) is None
     assert _to_float_or_none(1.7976931348623157e308) is None
+    assert _to_float_or_none(-1.0) is None
+    assert _to_float_or_none(-1) is None
+    assert _to_float_or_none(0.0) == 0.0
+    assert _to_float_or_none(150.25) == 150.25
