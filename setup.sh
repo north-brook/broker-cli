@@ -113,4 +113,7 @@ configure_fund_repository
 echo ""
 echo "${GREEN}✔${RESET} Setup complete."
 echo ""
+echo "  Config:     ${BROKER_CONFIG_JSON}"
+echo "  Skill file: ${BROKER_CONFIG_HOME}/skills/broker/SKILL.md"
+echo ""
 echo "${BLUE}→${RESET} Try: ${BOLD}${BLUE}broker daemon start${RESET}"

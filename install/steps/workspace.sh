@@ -6,6 +6,15 @@ prepare_broker_home() {
   mkdir -p "${BROKER_DATA_HOME}"
 }
 
+install_skill_files() {
+  local skill_source="${ROOT_DIR}/skills/broker/SKILL.md"
+  local skill_target="${BROKER_CONFIG_HOME}/skills/broker/SKILL.md"
+  if [[ -f "${skill_source}" ]]; then
+    mkdir -p "$(dirname "${skill_target}")"
+    cp "${skill_source}" "${skill_target}"
+  fi
+}
+
 ensure_broker_config() {
   mkdir -p "${BROKER_CONFIG_HOME}"
   if ! command -v python3 >/dev/null 2>&1; then
