@@ -16,6 +16,9 @@ export function Header() {
         >
           Broker CLI
         </Link>
+        <span className="ml-2 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider rounded bg-amber-500/15 text-amber-500 border border-amber-500/25 leading-none">
+          WIP
+        </span>
 
         <div className="flex items-center gap-4">
           <Link
